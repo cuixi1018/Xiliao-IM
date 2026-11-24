@@ -59,6 +59,8 @@ WHERE NOT EXISTS (
 
 UPDATE users
 SET
+  password_hash = '${safeHash}',
+  password_salt = '${safeSalt}',
   is_admin = 1,
   is_disabled = 0,
   deleted_at = NULL,
