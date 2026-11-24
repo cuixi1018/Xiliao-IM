@@ -108,6 +108,13 @@ function canRecall(msg) {
 function canDelete(msg) {
   return isOwnMessage(msg) && !msg.revokedAt;
 }
+function canForward(msg) {
+  // 语音消息不支持转发
+  if (!msg || msg.revokedAt) return false;
+  const att = msg.attachment;
+  if (att && String(att.type || '').startsWith('audio/')) return false;
+  return true;
+}
 function openMsgMenu(msg, event) {
   if (msg.kind === 'system') return;
   event.preventDefault();
@@ -167,7 +174,7 @@ const forwardLoading = ref(false);
 function openForward() {
   const msg = msgMenu.message;
   closeMsgMenu();
-  if (!msg) return;
+  if (!msg || !canForward(msg)) return;
   forwardMsg.value = msg;
   forwardRooms.value = conversationItems.value.slice();
   forwardOpen.value = true;
@@ -695,7 +702,7 @@ onBeforeUnmount(() => {
       <button v-if="canRecall(msgMenu.message)" type="button" @click="doRecall">↩️ 撤回</button>
       <button v-if="canDelete(msgMenu.message)" type="button" class="danger" @click="doDeleteMsg">🗑️ 删除</button>
       <button type="button" @click="doQuote">💬 引用</button>
-      <button type="button" @click="openForward">➡️ 转发</button>
+      <button v-if="canForward(msgMenu.message)" type="button" @click="openForward">➡️ 转发</button>
     </div>
     <div v-if="msgMenu.show" class="msg-menu-backdrop" @click="closeMsgMenu" @contextmenu.prevent="closeMsgMenu"></div>
 
