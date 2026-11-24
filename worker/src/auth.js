@@ -76,11 +76,26 @@ export async function putSession(env, session) {
 
 export async function createSession(env, user) {
   const token = toBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+
+  // 兼容历史用户：若尚无细聊号，登录时即时补一个并写回
+  let chatId = user.chat_id || '';
+  if (!chatId) {
+    const { generateChatId } = await import('./utils.js');
+    chatId = generateChatId(user.username);
+    await env.DB.prepare(
+      `UPDATE users SET chat_id = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND (chat_id IS NULL OR chat_id = '')`
+    )
+      .bind(chatId, Number(user.id))
+      .run();
+  }
+
   const session = {
     token,
     userId: Number(user.id),
     username: user.username,
     displayName: user.display_name,
+    chatId,
     avatarUrl: user.avatar_key ? `/files/${encodeURIComponent(user.avatar_key)}` : '',
     isAdmin: isAdminUser(env, user),
     sessionVersion: toSessionVersion(user.session_version)

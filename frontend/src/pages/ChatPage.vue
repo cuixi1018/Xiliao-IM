@@ -5,6 +5,7 @@ import MessageAttachment from '../components/chat/MessageAttachment.vue';
 import PendingAttachmentPreview from '../components/chat/PendingAttachmentPreview.vue';
 import UiAvatar from '../components/ui/Avatar.vue';
 import UiTextarea from '../components/ui/Textarea.vue';
+import WechatNav from '../components/WechatNav.vue';
 import api from '../api.js';
 import { useActiveRoom } from '../composables/useActiveRoom.js';
 import { useChatRoom } from '../composables/useChatRoom.js';
@@ -22,9 +23,11 @@ const { activeRoomKey, canManageActiveRoom, applyActiveChannel, selectDm, roomLa
   useActiveRoom({ activeRoom, groupSettingsForm: reactive({ name: '', avatarUrl: '', avatarKey: '' }) });
 
 const {
-  channels, users, sidebarLoading, conversationItems, formatListTime,
+  channels, users, sidebarLoading, conversationItems, collapsedGroups, toggleGroupCollapsed, formatListTime,
   refreshSidebar, openConversation, markConversationRead, applyConversationActivity
 } = useChatSidebar({ error, applyActiveChannel, selectDm });
+
+const showCollapsed = ref(false);
 
 const {
   messages, loading, wsStatus, composerText, pendingAttachment, sending,
@@ -92,10 +95,130 @@ async function selectConversation(item) {
 function logout() { store.logout(); router.push('/login'); }
 function openAdmin() { router.push('/admin'); }
 
+// 更多操作菜单
+const showMoreMenu = ref(false);
+async function leaveGroup() {
+  if (!activeRoom.value || activeRoom.value.kind === 'dm') return;
+  if (!window.confirm('确定退出该群聊吗？')) return;
+  try {
+    await api.leaveChannel(activeRoom.value.id);
+    activeRoom.value = null;
+    showMoreMenu.value = false;
+    await refreshSidebar();
+  } catch (e) { error.value = e.message; }
+}
+async function clearHistory() {
+  if (!activeRoom.value) return;
+  if (!window.confirm('确定清空你看到的聊天记录吗？这只影响你自己，不会删除对方的记录。')) return;
+  try {
+    await api.clearMessages(activeRoom.value.kind, activeRoom.value.id);
+    messages.value = [];
+    showMoreMenu.value = false;
+    error.value = '';
+    await refreshSidebar();
+  } catch (e) { error.value = e.message; }
+}
+
+// 语音播放（全局单一 audio 元素）
+const playingVoice = ref(null);
+const voiceAudio = ref(null);
+const voiceUrl = ref('');
+function isVoice(att) {
+  return Boolean(att && (att.type || '').startsWith('audio/'));
+}
+function toggleVoice(msg, event) {
+  const el = voiceAudio.value;
+  if (!el) return;
+  if (playingVoice.value === msg.id) {
+    el.pause();
+    playingVoice.value = null;
+    return;
+  }
+  voiceUrl.value = msg.attachment.url;
+  nextTick(() => {
+    const audio = voiceAudio.value;
+    if (!audio) return;
+    audio.src = msg.attachment.url;
+    audio.play().then(() => { playingVoice.value = msg.id; }).catch(() => {});
+    audio.onended = () => { playingVoice.value = null; };
+  });
+}
+
+// 表情面板
+const showEmojiPicker = ref(false);
+const emojis = ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😋','😛','🤪','🤨','🧐','🤓','😎','🥳','😏','😒','😞','😔','😟','😕','🙁','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🤭','🤫','🤥','😶','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕','👍','👎','👌','🤝','🙏','💪','👏','🎉','❤️','🔥','✨','🌹','☕','🍺','🚀','💯','✅','👀','💡','⭐','🌈','🍀'];
+function insertEmoji(emoji) {
+  composerText.value = (composerText.value || '') + emoji;
+}
+
+// 语音录制
+const recording = ref(false);
+let mediaRecorder = null;
+let audioChunks = [];
+const recordingSeconds = ref(0);
+let recordTimer = null;
+async function toggleRecording() {
+  if (recording.value) { stopRecording(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size) audioChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      if (!audioChunks.length) return;
+      const blob = new Blob(audioChunks, { type: audioChunks[0].type || 'audio/webm' });
+      const duration = Math.max(1, recordingSeconds.value);
+      const ext = (blob.type.includes('mp4') ? 'm4a' : 'webm');
+      const file = new File([blob], `voice-${Date.now()}.${ext}`, { type: blob.type || 'audio/webm' });
+      try {
+        const upload = await api.uploadFile(file);
+        await api.sendMessageApi(activeRoom.value.kind, activeRoom.value.id, {
+          attachment: {
+            key: upload.file.key,
+            name: `语音 ${duration}″`,
+            type: blob.type || 'audio/webm',
+            size: blob.size,
+            duration
+          }
+        });
+        await loadMessages();
+      } catch (e) { error.value = e.message; }
+    };
+    mediaRecorder.start();
+    recording.value = true;
+    recordingSeconds.value = 0;
+    recordTimer = setInterval(() => { recordingSeconds.value += 1; }, 1000);
+  } catch (e) {
+    error.value = '无法使用麦克风，请检查浏览器权限';
+  }
+}
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  recording.value = false;
+  if (recordTimer) { clearInterval(recordTimer); recordTimer = null; }
+}
+onBeforeUnmount(() => { if (recordTimer) clearInterval(recordTimer); });
+
 async function bootstrap() {
   error.value = '';
-  try { await refreshSidebar(); }
-  catch (e) { error.value = e.message; }
+  try {
+    await refreshSidebar();
+
+    // 处理从通讯录点击好友发起的会话
+    const pendingRaw = sessionStorage.getItem('pendingDm');
+    if (pendingRaw) {
+      sessionStorage.removeItem('pendingDm');
+      try {
+        const dm = JSON.parse(pendingRaw);
+        const item = conversationItems.value.find((c) => c.kind === 'dm' && c.id === dm.id);
+        if (item) await selectConversation(item);
+        else if (dm.otherUser) {
+          selectDm({ ...dm, name: dm.otherUser.displayName, otherUser: dm.otherUser });
+        }
+      } catch { /* ignore bad payload */ }
+    }
+  } catch (e) { error.value = e.message; }
 }
 
 watch(activeRoomKey, async (k) => {
@@ -129,31 +252,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="chat-layout">
     <!-- Far-Left Navigation Sidebar -->
-    <aside class="right-sidebar">
-      <div class="right-sidebar-inner">
-        <div class="right-sidebar-section right-sidebar-actions">
-          <button v-if="showAdminEntry" type="button" class="right-sidebar-action tooltip" data-tooltip="后台" @click="openAdmin">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
-              <title>后台</title>
-              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-              <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
-            </svg>
-          </button>
-        </div>
-
-        <div class="right-sidebar-section right-sidebar-user-group">
-          <button type="button" class="right-sidebar-user tooltip" data-tooltip="个人设置" @click="router.push('/settings')">
-            <UiAvatar :src="session?.avatarUrl" :fallback="session?.displayName?.[0] || 'U'" size="sm" />
-          </button>
-          <button type="button" class="right-sidebar-action right-sidebar-action--danger tooltip" data-tooltip="退出" @click="logout">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
-              <title>退出</title>
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-    </aside>
+    <WechatNav active="chat" />
 
     <!-- Middle-Left Chat List Sidebar -->
     <aside class="left-sidebar">
@@ -173,7 +272,30 @@ onBeforeUnmount(() => {
 
         <div class="sidebar-section sidebar-list">
           <div v-if="sidebarLoading" class="sidebar-hint">加载中...</div>
-          <div v-else-if="!conversationItems.length" class="sidebar-hint">暂无会话</div>
+          <div v-else-if="!conversationItems.length && !collapsedGroups.length" class="sidebar-hint">暂无会话</div>
+
+          <button v-if="collapsedGroups.length" type="button" class="sidebar-item collapsed-entry" @click="showCollapsed = !showCollapsed">
+            <span class="collapsed-icon">📁</span>
+            <div class="sidebar-label-group">
+              <div class="sidebar-item__top"><strong class="sidebar-label">折叠的群聊</strong></div>
+              <div class="sidebar-item__bottom"><p class="sidebar-label sidebar-item__preview">{{ collapsedGroups.length }} 个群聊 · {{ showCollapsed ? '点击收起' : '点击展开' }}</p></div>
+            </div>
+          </button>
+          <template v-if="showCollapsed">
+            <button
+              type="button"
+              v-for="g in collapsedGroups" :key="'col-'+g.id"
+              class="sidebar-item sidebar-item--collapsed"
+              @click="selectConversation({ key: `${g.kind}:${g.id}`, id: g.id, kind: g.kind, source: g })"
+            >
+              <UiAvatar :src="g.avatarUrl" :fallback="g.name?.[0] || '群'" size="sm" />
+              <div class="sidebar-label-group">
+                <div class="sidebar-item__top"><strong class="sidebar-label">{{ g.name }}</strong></div>
+              </div>
+              <span class="uncollapse-btn" title="取消折叠" @click.stop="toggleGroupCollapsed(g.id)">⊞</span>
+            </button>
+          </template>
+
           <button
             type="button"
             v-for="item in conversationItems" :key="item.key"
@@ -193,6 +315,7 @@ onBeforeUnmount(() => {
                 </span>
               </div>
             </div>
+            <span v-if="item.kind !== 'dm'" class="fold-btn" title="折叠群聊" @click.stop="toggleGroupCollapsed(item.id)">📁</span>
           </button>
         </div>
       </div>
@@ -204,6 +327,11 @@ onBeforeUnmount(() => {
         <header class="chat-header">
           <h2>{{ roomLabel(activeRoom) }}</h2>
           <div class="chat-header__status" :class="wsConnected ? 'online' : 'offline'"></div>
+          <button type="button" class="chat-header__more" title="更多" @click="showMoreMenu = !showMoreMenu">⋯</button>
+          <div v-if="showMoreMenu" class="more-menu">
+            <button v-if="activeRoom.kind !== 'dm'" type="button" @click="leaveGroup">退出群聊</button>
+            <button type="button" @click="clearHistory">清空聊天记录</button>
+          </div>
         </header>
 
         <section ref="messagesEl" class="chat-messages">
@@ -220,7 +348,11 @@ onBeforeUnmount(() => {
                 {{ msg.sender.displayName }}
               </div>
               <p v-if="msg.content">{{ msg.content }}</p>
-              <MessageAttachment v-if="msg.attachment" :attachment="msg.attachment" />
+              <div v-if="msg.attachment && isVoice(msg.attachment)" class="voice-bubble" @click="toggleVoice(msg)">
+                <span class="voice-icon">{{ playingVoice === msg.id ? '⏸' : '▶' }}</span>
+                <span class="voice-wave">🔊 语音 {{ msg.attachment.duration || '?' }}″</span>
+              </div>
+              <MessageAttachment v-else-if="msg.attachment" :attachment="msg.attachment" />
               <span class="message-time">{{ formatBubbleTime(msg.createdAt) }}</span>
             </div>
           </article>
@@ -231,11 +363,20 @@ onBeforeUnmount(() => {
             <PendingAttachmentPreview :attachment="pendingAttachment" @clear="clearAttachment" />
           </div>
           <div v-if="error" class="composer-error">{{ error }}</div>
+          <div v-if="showEmojiPicker" class="emoji-picker">
+            <button v-for="e in emojis" :key="e" type="button" @click="insertEmoji(e)">{{ e }}</button>
+          </div>
+          <div v-if="recording" class="recording-bar">🔴 正在录音 {{ recordingSeconds }}″ <button type="button" @click="stopRecording">发送</button></div>
           <div class="composer-row">
             <input ref="fileInputEl" type="file" class="composer-file-input" @change="uploadAttachment" />
-            <button type="button" class="composer-btn" :disabled="!activeRoom" @click="openFilePicker">
+            <button type="button" class="composer-btn" :disabled="!activeRoom" @click="showEmojiPicker = !showEmojiPicker" title="表情">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+            </button>
+            <button type="button" class="composer-btn" :disabled="!activeRoom" @click="toggleRecording" :title="recording ? '停止录音' : '语音消息'">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="17" x2="12" y2="22"/></svg>
+            </button>
+            <button type="button" class="composer-btn" :disabled="!activeRoom" @click="openFilePicker" title="添加附件">
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
-                <title>添加附件</title>
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
               </svg>
             </button>
@@ -301,6 +442,8 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </Transition>
+
+    <audio ref="voiceAudio" style="display:none"></audio>
   </div>
 </template>
 
@@ -991,6 +1134,29 @@ onBeforeUnmount(() => {
 .modal-fade-leave-to {
   opacity: 0;
 }
+
+/* 微信风格新增组件 */
+.chat-header__more { margin-left: auto; border: none; background: transparent; color: #54656f; font-size: 24px; line-height: 1; cursor: pointer; padding: 0 8px; }
+.chat-header { position: relative; }
+.more-menu { position: absolute; top: 44px; right: 12px; z-index: 15; background: #fff; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); padding: 6px 0; min-width: 140px; }
+.more-menu button { display: block; width: 100%; text-align: left; padding: 10px 16px; border: none; background: transparent; font-size: 13px; color: #333; cursor: pointer; }
+.more-menu button:hover { background: #f5f5f5; }
+.emoji-picker { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; max-height: 180px; overflow-y: auto; padding: 8px; background: #fff; border: 1px solid #e8ecf0; border-radius: 10px; margin-bottom: 8px; }
+.emoji-picker button { border: none; background: transparent; font-size: 20px; cursor: pointer; padding: 4px; border-radius: 6px; }
+.emoji-picker button:hover { background: #f0f2f5; }
+.recording-bar { padding: 8px 12px; margin-bottom: 8px; background: #fdeaea; color: #c0392b; border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 12px; }
+.recording-bar button { margin-left: auto; padding: 4px 14px; border: none; border-radius: 6px; background: #07c160; color: #fff; cursor: pointer; }
+.voice-bubble { display: flex; align-items: center; gap: 8px; min-width: 130px; padding: 4px 2px; cursor: pointer; }
+.voice-icon { font-size: 16px; }
+.voice-wave { font-size: 13px; color: #333; }
+.collapsed-entry { background: #fafafa; }
+.collapsed-icon { font-size: 20px; width: 40px; text-align: center; }
+.sidebar-item--collapsed { opacity: 0.8; }
+.uncollapse-btn, .fold-btn { flex-shrink: 0; font-size: 15px; color: #9aa5ad; padding: 4px; cursor: pointer; border-radius: 4px; }
+.fold-btn { position: absolute; right: 8px; top: 8px; opacity: 0; transition: opacity 150ms; }
+.sidebar-item { position: relative; }
+.sidebar-item:hover .fold-btn { opacity: 1; }
+.uncollapse-btn:hover, .fold-btn:hover { background: #e8ecf0; color: #008069; }
 
 @media (max-width: 768px) {
   .left-sidebar {

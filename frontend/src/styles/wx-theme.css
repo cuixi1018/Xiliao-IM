@@ -1,0 +1,46 @@
+/* 全站微信风格统一覆盖：把残留的蓝色系中和为微信绿 */
+:root {
+  --wx-green: #07c160;
+  --wx-green-dark: #06ad56;
+  --wx-ink: #191919;
+  --wx-muted: #7a7a7a;
+}
+
+/* 管理后台 / 遗留页面中的蓝色文字统一为深灰或微信绿 */
+[class*="admin"] h1,
+[class*="admin"] h2,
+[class*="admin"] h3,
+[class*="panel-title"] {
+  color: var(--wx-ink) !important;
+}
+
+/* 遗留的蓝色按钮/链接类反弹为微信绿（按常见命名兜底） */
+.btn-primary,
+.ui-button--primary,
+.primary-btn,
+.save-btn,
+.crop-confirm,
+.submit-btn {
+  background: var(--wx-green) !important;
+  border-color: var(--wx-green) !important;
+}
+.btn-primary:hover,
+.ui-button--primary:hover,
+.save-btn:hover {
+  background: var(--wx-green-dark) !important;
+}
+
+/* 统一选中态/焦点色 */
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--wx-green) !important;
+}
+
+/* 全局字体：微信系统字体栈 */
+body,
+button,
+input,
+textarea {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}

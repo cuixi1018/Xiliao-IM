@@ -10,8 +10,16 @@ SOFT_DELETE_RETENTION_DAYS = "60"
 GC_BATCH_SIZE = "500"
 GC_MAX_BATCHES_PER_RUN = "20"
 R2_DELETE_MAX_RETRY = "8"
-ALLOWED_FILE_TYPES = "image/,video/,application/pdf,text/"
+ALLOWED_FILE_TYPES = "image/,video/,audio/,application/pdf,text/"
 MAX_FILE_SIZE = "20971520"
+
+# 内置"熙熙账号"OAuth 注册配置（使用 secrets 管理敏感值：wrangler secret put CLIENT_SECRET）
+# CLIENT_ID = "your-oauth-client-id"
+# AUTH_ENDPOINT = "https://auth.cuixi.qzz.io"
+# TOKEN_ENDPOINT = "https://xi-auth.pages.dev/oauth/token"
+# USERINFO_ENDPOINT = "https://xi-auth.pages.dev/oauth/userinfo"
+# REDIRECT_URI = "https://你的站点域名/register-oauth"
+# CLIENT_SECRET 通过 `wrangler secret put CLIENT_SECRET` 设置
 
 [[d1_databases]]
 binding = "DB"
@@ -22,6 +30,10 @@ database_id = "YOUR_D1_DATABASE_ID_HERE"
 [[kv_namespaces]]
 binding = "SESSIONS"
 id = "YOUR_KV_NAMESPACE_ID_HERE"
+
+[[kv_namespaces]]
+binding = "OAUTH_TEMP"
+id = "YOUR_OAUTH_TEMP_KV_NAMESPACE_ID_HERE"
 
 [[r2_buckets]]
 binding = "FILES"

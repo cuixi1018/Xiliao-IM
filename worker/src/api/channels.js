@@ -7,6 +7,7 @@ import {
 } from '../db.js';
 import { ApiError } from '../errors.js';
 import { errorResponse, parseJsonRequest, publicFileUrl } from '../utils.js';
+import { areFriends } from './social.js';
 
 function mapChannelRow(row) {
   return {
@@ -36,7 +37,7 @@ function normalizeMemberIds(payload) {
   return [...new Set(source.map((value) => Number(value)).filter((value) => Number.isFinite(value)))];
 }
 
-async function ensureValidInvitees(db, userIds) {
+async function ensureValidInvitees(db, userIds, actorId) {
   if (!userIds.length) {
     return [];
   }
@@ -53,7 +54,17 @@ async function ensureValidInvitees(db, userIds) {
     .bind(...userIds)
     .all();
 
-  return results.map((row) => Number(row.id));
+  // 建群/邀请只能添加已成为好友的用户（微信规则：需先加好友，拥有对方细聊号）
+  const valid = [];
+  for (const row of results) {
+    if (Number(row.id) === Number(actorId)) {
+      continue;
+    }
+    if (await areFriends(db, actorId, row.id)) {
+      valid.push(Number(row.id));
+    }
+  }
+  return valid;
 }
 
 export function registerChannelRoutes(app) {
@@ -158,7 +169,7 @@ export function registerChannelRoutes(app) {
     }
 
     const inviteUserIds = normalizeMemberIds(payload).filter((userId) => userId !== session.userId);
-    const validInvitees = await ensureValidInvitees(c.env.DB, inviteUserIds);
+    const validInvitees = await ensureValidInvitees(c.env.DB, inviteUserIds, session.userId);
     const result = await c.env.DB.prepare(
       `INSERT INTO channels (name, description, kind, created_by)
        VALUES (?, ?, ?, ?)`
@@ -348,9 +359,9 @@ export function registerChannelRoutes(app) {
     }
 
     const userIds = normalizeMemberIds(payload).filter((userId) => userId !== session.userId);
-    const validInvitees = await ensureValidInvitees(c.env.DB, userIds);
+    const validInvitees = await ensureValidInvitees(c.env.DB, userIds, session.userId);
     if (!validInvitees.length) {
-      return errorResponse('没有可邀请的用户');
+      return errorResponse('只能邀请你的好友入群，请先添加对方为好友');
     }
 
     const statements = validInvitees.map((userId) =>

@@ -137,11 +137,28 @@ export class ChannelRoom {
     }
   }
 
-  async broadcast(packet) {
+  async broadcast(packet, senderId = null, excludeUserId = null) {
     for (const [socket, meta] of this.connections) {
       const currentMeta = await this.revalidateConnection(socket, meta);
       if (!currentMeta) {
         continue;
+      }
+
+      // REST 发送场景：不向发送者本人重复推送
+      if (excludeUserId !== null && currentMeta.principal.userId === excludeUserId) {
+        continue;
+      }
+
+      // 若接收者拉黑了发送者，则不向其推送该消息
+      if (senderId !== null && currentMeta.principal.userId !== senderId) {
+        const { results } = await this.env.DB.prepare(
+          `SELECT 1 FROM blacklist WHERE user_id = ? AND blocked_user_id = ? LIMIT 1`
+        )
+          .bind(currentMeta.principal.userId, senderId)
+          .all();
+        if (results[0]) {
+          continue;
+        }
       }
 
       try {
@@ -154,6 +171,22 @@ export class ChannelRoom {
 
   async fetch(request) {
     const url = new URL(request.url);
+
+    // Worker 内部广播请求（用于 REST 发送的语音等消息）
+    if (url.pathname === '/broadcast' && request.method === 'POST') {
+      if (request.headers.get(INTERNAL_AUTH_HEADER) !== 'worker-verified') {
+        return new Response('Unauthorized', { status: 401 });
+      }
+      let data;
+      try {
+        data = await request.json();
+      } catch {
+        return new Response('Bad Request', { status: 400 });
+      }
+      const packet = JSON.stringify({ type: data.type || 'message', message: data.message });
+      await this.broadcast(packet, data.excludeUserId ?? null, data.excludeUserId ?? null);
+      return new Response('OK');
+    }
 
     if (request.headers.get('Upgrade') !== 'websocket') {
       return new Response('Expected websocket', { status: 426 });
@@ -246,7 +279,7 @@ export class ChannelRoom {
         message: saved
       });
 
-      await this.broadcast(packet);
+      await this.broadcast(packet, currentMeta.principal.userId);
       await this.notifyUnreadRecipients(currentMeta, saved);
     } catch (error) {
       sendSocketError(ws, error.message || 'Send failed');

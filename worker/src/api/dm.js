@@ -37,9 +37,10 @@ export function registerDmRoutes(app) {
        WHERE c.kind = 'dm'
          AND c.deleted_at IS NULL
          AND other.deleted_at IS NULL
+         AND other.id NOT IN (SELECT blocked_user_id FROM blacklist WHERE user_id = ?)
        ORDER BY last_message_at DESC NULLS LAST, c.id DESC`
     )
-      .bind(session.userId, session.userId, session.userId, session.userId)
+      .bind(session.userId, session.userId, session.userId, session.userId, session.userId)
       .all();
 
     return c.json({
@@ -81,6 +82,18 @@ export function registerDmRoutes(app) {
 
     if (!targetUser.results[0]) {
       return errorResponse('目标用户不存在', 404);
+    }
+
+    const blocked = await c.env.DB.prepare(
+      `SELECT 1 FROM blacklist
+       WHERE (user_id = ? AND blocked_user_id = ?)
+          OR (user_id = ? AND blocked_user_id = ?)
+       LIMIT 1`
+    )
+      .bind(session.userId, targetUserId, targetUserId, session.userId)
+      .all();
+    if (blocked.results[0]) {
+      return errorResponse('无法与该项目用户发起会话');
     }
 
     const channel = await ensureDmChannel(c.env.DB, session.userId, targetUserId);

@@ -18,6 +18,16 @@ const passwordForm = reactive({
   newPassword: ''
 });
 
+const copied = ref(false);
+function copyChatId() {
+  const id = session.value?.chatId || '';
+  if (!id) return;
+  navigator.clipboard?.writeText(id).then(() => {
+    copied.value = true;
+    setTimeout(() => { copied.value = false; }, 2000);
+  }).catch(() => {});
+}
+
 const info = ref('');
 const error = ref('');
 const savingProfile = ref(false);
@@ -290,6 +300,11 @@ async function changePassword() {
       <div class="settings-grid">
         <section class="settings-section">
           <h2>个人资料</h2>
+          <div class="chatid-card">
+            <span>我的细聊号</span>
+            <strong>{{ session?.chatId || '—' }}</strong>
+            <button type="button" @click="copyChatId">{{ copied ? '已复制' : '复制' }}</button>
+          </div>
           <label class="field-compact">
             <span>显示名称</span>
             <input
@@ -340,6 +355,12 @@ async function changePassword() {
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
           返回聊天
+        </button>
+        <button type="button" class="nav-link" @click="router.push('/contacts')">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+          </svg>
+          通讯录 / 黑名单
         </button>
         <button
           v-if="showAdminEntry"
@@ -917,4 +938,21 @@ async function changePassword() {
     transform: none;
   }
 }
+
+/* 微信风格微调 */
+.chatid-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #eaf8ef, #f3faf5);
+  border: 1px solid #d3eddc;
+}
+.chatid-card span { font-size: 12px; color: #5a7a68; }
+.chatid-card strong { flex: 1; font-size: 15px; color: #07c160; letter-spacing: 0.5px; }
+.chatid-card button { border: 1px solid #07c160; background: transparent; color: #07c160; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.settings-header__left h1, .settings-section h2 { color: #191919; }
+.save-btn, .crop-confirm { background: #07c160; box-shadow: 0 2px 8px rgba(7,193,96,0.2); }
+.save-btn:hover:not(:disabled), .crop-confirm:hover { background: #06ad56; }
 </style>

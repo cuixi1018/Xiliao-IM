@@ -2,6 +2,9 @@ import { createRouter, createWebHistory } from 'vue-router';
 import store from './store.js';
 import LoginPage from './pages/LoginPage.vue';
 import RegisterPage from './pages/RegisterPage.vue';
+import RegisterOAuthPage from './pages/RegisterOAuthPage.vue';
+import ContactsPage from './pages/ContactsPage.vue';
+import MomentsPage from './pages/MomentsPage.vue';
 import ChatPage from './pages/ChatPage.vue';
 import AdminPage from './pages/AdminPage.vue';
 import AdminUsersPage from './pages/AdminUsersPage.vue';
@@ -27,9 +30,27 @@ const router = createRouter({
       meta: { public: true, transition: 'page' }
     },
     {
+      path: '/register-oauth',
+      name: 'register-oauth',
+      component: RegisterOAuthPage,
+      meta: { public: true, transition: 'page' }
+    },
+    {
       path: '/',
       name: 'chat',
       component: ChatPage,
+      meta: { transition: 'page' }
+    },
+    {
+      path: '/contacts',
+      name: 'contacts',
+      component: ContactsPage,
+      meta: { transition: 'page' }
+    },
+    {
+      path: '/moments',
+      name: 'moments',
+      component: MomentsPage,
       meta: { transition: 'page' }
     },
     {

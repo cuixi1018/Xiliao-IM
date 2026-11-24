@@ -1,4 +1,20 @@
-import { pickAttachment, publicFileUrl } from './utils.js';
+import { generateChatId, pickAttachment, publicFileUrl } from './utils.js';
+
+// 生成一个 database 内唯一的细聊号，冲突时重试
+export async function makeUniqueChatId(db, username) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const chatId = generateChatId(username);
+    const { results } = await db
+      .prepare('SELECT 1 FROM users WHERE chat_id = ? LIMIT 1')
+      .bind(chatId)
+      .all();
+    if (!results[0]) {
+      return chatId;
+    }
+  }
+  // 极端兜底：追加时间戳，几乎不可能冲突
+  return `${generateChatId(username)}${Date.now().toString(36).slice(-4).toUpperCase()}`;
+}
 
 function toNullableNumber(value) {
   const number = Number(value);
@@ -47,11 +63,12 @@ export async function getSiteSettings(db) {
   const map = Object.fromEntries(results.map((row) => [row.setting_key, row.setting_value]));
   return {
     siteName: String(map.site_name || 'Xiliao'),
-    siteIconUrl: String(map.site_icon_url || '')
+    siteIconUrl: String(map.site_icon_url || ''),
+    allowRegistration: String(map.allow_registration || '0') === '1'
   };
 }
 
-export async function updateSiteSettings(db, { siteName, siteIconUrl }) {
+export async function updateSiteSettings(db, { siteName, siteIconUrl, allowRegistration }) {
   const statements = [];
 
   if (siteName !== undefined) {
@@ -79,6 +96,20 @@ export async function updateSiteSettings(db, { siteName, siteIconUrl }) {
                updated_at = CURRENT_TIMESTAMP`
         )
         .bind(String(siteIconUrl || '').trim())
+    );
+  }
+
+  if (allowRegistration !== undefined) {
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO site_settings (setting_key, setting_value, updated_at)
+           VALUES ('allow_registration', ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(setting_key) DO UPDATE
+           SET setting_value = excluded.setting_value,
+               updated_at = CURRENT_TIMESTAMP`
+        )
+        .bind(allowRegistration ? '1' : '0')
     );
   }
 
@@ -196,12 +227,24 @@ export async function listChannelMembers(db, channelId) {
   }));
 }
 
-export async function listMessages(db, roomId, before = null, limit = 30) {
+export async function listMessages(db, roomId, before = null, limit = 30, viewerId = null) {
   const filters = ['m.channel_id = ?', 'm.deleted_at IS NULL'];
   const binds = [Number(roomId)];
   if (before) {
     filters.push('m.id < ?');
     binds.push(Number(before));
+  }
+  if (viewerId !== null && viewerId !== undefined) {
+    filters.push(`m.id >= COALESCE((
+      SELECT ccp.cleared_before_id FROM channel_clear_points ccp
+      WHERE ccp.channel_id = m.channel_id AND ccp.user_id = ?
+    ), 0)`);
+    binds.push(Number(viewerId));
+    // 屏蔽被我拉黑用户发送的消息
+    filters.push(`m.sender_id NOT IN (
+      SELECT blocked_user_id FROM blacklist WHERE user_id = ?
+    )`);
+    binds.push(Number(viewerId));
   }
 
   const { results } = await db
@@ -213,6 +256,7 @@ export async function listMessages(db, roomId, before = null, limit = 30) {
          m.attachment_name,
          m.attachment_type,
          m.attachment_size,
+         m.attachment_duration,
          m.created_at,
          u.id AS sender_id,
          u.username AS sender_username,
@@ -285,10 +329,17 @@ export async function countUnreadMessages(db, { channelId, userId }) {
            FROM message_reads mr
            WHERE mr.channel_id = ?
              AND mr.user_id = ?
-         ), 0)`
+         ), 0)
+         AND m.id >= COALESCE((
+           SELECT ccp.cleared_before_id FROM channel_clear_points ccp
+           WHERE ccp.channel_id = m.channel_id AND ccp.user_id = ?
+         ), 0)
+         AND m.sender_id NOT IN (
+           SELECT blocked_user_id FROM blacklist WHERE user_id = ?
+         )`
     )
-    .bind(Number(channelId), Number(userId), Number(channelId), Number(userId))
-    .all();
+      .bind(Number(channelId), Number(userId), Number(channelId), Number(userId), Number(userId), Number(userId))
+      .all();
 
   return Number(results[0]?.unread_count || 0);
 }
@@ -323,18 +374,20 @@ export async function insertMessage(db, { channelId, senderId, content, attachme
          attachment_key,
          attachment_name,
          attachment_type,
-         attachment_size
-       ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+         attachment_size,
+         attachment_duration
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .bind(
-      Number(channelId),
-      Number(senderId),
-      cleanContent,
-      cleanAttachment?.key || null,
-      cleanAttachment?.name || null,
-      cleanAttachment?.type || null,
-      cleanAttachment?.size || null
-    )
+      .bind(
+        Number(channelId),
+        Number(senderId),
+        cleanContent,
+        cleanAttachment?.key || null,
+        cleanAttachment?.name || null,
+        cleanAttachment?.type || null,
+        cleanAttachment?.size || null,
+        cleanAttachment?.duration || null
+      )
     .run();
 
   return getMessageById(db, result.meta.last_row_id);
@@ -350,6 +403,7 @@ export async function getMessageById(db, messageId) {
          m.attachment_name,
          m.attachment_type,
          m.attachment_size,
+         m.attachment_duration,
          m.created_at,
          u.id AS sender_id,
          u.username AS sender_username,
@@ -383,6 +437,7 @@ export function mapMessage(row) {
           name: row.attachment_name,
           type: row.attachment_type,
           size: toNullableNumber(row.attachment_size) || 0,
+          ...(row.attachment_duration ? { duration: Number(row.attachment_duration) } : {}),
           url: publicFileUrl(row.attachment_key)
         }
       : null

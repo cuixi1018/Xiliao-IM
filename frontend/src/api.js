@@ -261,6 +261,113 @@ export default {
       headers: { 'Content-Type': 'application/json' },
       body: payload
     });
+  },
+
+  // ===== 好友 =====
+  getFriends() {
+    return request('/friends');
+  },
+  searchUsers(keyword) {
+    return request('/friends/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { keyword }
+    });
+  },
+  addFriend(payload) {
+    return request('/friends/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload
+    });
+  },
+  respondFriend(requestId, accept) {
+    return request('/friends/respond', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { requestId, accept }
+    });
+  },
+  removeFriend(userId) {
+    return request(`/friends/${userId}`, { method: 'DELETE' });
+  },
+
+  // ===== 黑名单 =====
+  getBlacklist() {
+    return request('/blacklist');
+  },
+  blockUser(userId) {
+    return request('/blacklist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { userId }
+    });
+  },
+  unblockUser(userId) {
+    return request(`/blacklist/${userId}`, { method: 'DELETE' });
+  },
+
+  // ===== 群聊 / 消息 =====
+  leaveChannel(channelId) {
+    return request(`/channels/${channelId}/leave`, { method: 'POST' });
+  },
+  clearMessages(kind, roomId) {
+    return request('/messages/clear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { kind, roomId }
+    });
+  },
+  sendMessageApi(kind, roomId, payload) {
+    return request('/messages/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { kind, roomId, ...payload }
+    });
+  },
+
+  // ===== 内置注册 =====
+  getRegConfig() {
+    return request('/reg/config');
+  },
+  regExchange(code) {
+    return request(`/reg/exchange?code=${encodeURIComponent(code)}`);
+  },
+  regRegister(payload) {
+    return request('/reg/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload
+    });
+  },
+
+  // ===== 朋友圈 =====
+  getMoments(before) {
+    return request(`/moments${before ? `?before=${encodeURIComponent(String(before))}` : ''}`);
+  },
+  createMoment(payload) {
+    return request('/moments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload
+    });
+  },
+  likeMoment(id, like) {
+    return request(`/moments/${id}/like`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { like }
+    });
+  },
+  commentMoment(id, payload) {
+    return request(`/moments/${id}/comment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload
+    });
+  },
+  deleteMoment(id) {
+    return request(`/moments/${id}`, { method: 'DELETE' });
   }
 };
 

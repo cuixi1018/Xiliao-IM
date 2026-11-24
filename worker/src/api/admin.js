@@ -1,5 +1,5 @@
 import { hashPassword } from '../auth.js';
-import { getSiteSettings, listMessages, requireAccessibleRoom, updateSiteSettings } from '../db.js';
+import { getSiteSettings, listMessages, makeUniqueChatId, requireAccessibleRoom, updateSiteSettings } from '../db.js';
 import { ApiError } from '../errors.js';
 import { errorResponse, parseJsonRequest, randomToken, sanitizeLimit } from '../utils.js';
 
@@ -117,12 +117,13 @@ export function registerAdminRoutes(app) {
     const payload = await parseJsonRequest(c.req.raw);
     const siteName = String(payload.siteName || '').trim();
     const siteIconUrl = String(payload.siteIconUrl || '').trim();
+    const allowRegistration = Boolean(payload.allowRegistration);
 
     if (!siteName) {
       return errorResponse('站点名称不能为空');
     }
 
-    const site = await updateSiteSettings(c.env.DB, { siteName, siteIconUrl });
+    const site = await updateSiteSettings(c.env.DB, { siteName, siteIconUrl, allowRegistration });
     return c.json({ site });
   });
 
@@ -212,6 +213,7 @@ export function registerAdminRoutes(app) {
          id,
          username,
          display_name,
+         chat_id,
          avatar_key,
          is_disabled,
          created_at
@@ -225,6 +227,7 @@ export function registerAdminRoutes(app) {
         id: Number(row.id),
         username: row.username,
         displayName: row.display_name,
+        chatId: row.chat_id || '',
         avatarUrl: row.avatar_key ? `/files/${encodeURIComponent(row.avatar_key)}` : '',
         isDisabled: Boolean(Number(row.is_disabled)),
         createdAt: row.created_at
@@ -243,15 +246,17 @@ export function registerAdminRoutes(app) {
     }
 
     const hashed = await hashPassword(password);
+    const chatId = await makeUniqueChatId(c.env.DB, username);
     const result = await c.env.DB.prepare(
       `INSERT INTO users (
          username,
          display_name,
          password_hash,
-         password_salt
-       ) VALUES (?, ?, ?, ?)`
+         password_salt,
+         chat_id
+       ) VALUES (?, ?, ?, ?, ?)`
     )
-      .bind(username, displayName, hashed.hash, hashed.salt)
+      .bind(username, displayName, hashed.hash, hashed.salt, chatId)
       .run()
       .catch((error) => {
         if (String(error.message).includes('UNIQUE')) {
@@ -265,6 +270,7 @@ export function registerAdminRoutes(app) {
         id: result.meta.last_row_id,
         username,
         displayName,
+        chatId,
         isDisabled: false
       }
     });

@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   is_disabled INTEGER NOT NULL DEFAULT 0,
   is_admin INTEGER NOT NULL DEFAULT 0,
   session_version INTEGER NOT NULL DEFAULT 0,
+  chat_id TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TEXT
@@ -50,6 +51,7 @@ CREATE TABLE IF NOT EXISTS messages (
   attachment_name TEXT,
   attachment_type TEXT,
   attachment_size INTEGER,
+  attachment_duration INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TEXT,
   FOREIGN KEY (channel_id) REFERENCES channels(id),
@@ -60,6 +62,38 @@ CREATE TABLE IF NOT EXISTS message_reads (
   channel_id INTEGER NOT NULL,
   user_id INTEGER NOT NULL,
   last_read_message_id INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (channel_id, user_id),
+  FOREIGN KEY (channel_id) REFERENCES channels(id),
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS friendships (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  requester_id INTEGER NOT NULL,
+  addressee_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted')),
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (requester_id, addressee_id),
+  FOREIGN KEY (requester_id) REFERENCES users(id),
+  FOREIGN KEY (addressee_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS blacklist (
+  user_id INTEGER NOT NULL,
+  blocked_user_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, blocked_user_id),
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (blocked_user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS channel_clear_points (
+  channel_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  cleared_before_id INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (channel_id, user_id),
   FOREIGN KEY (channel_id) REFERENCES channels(id),
@@ -85,6 +119,44 @@ CREATE TABLE IF NOT EXISTS registration_invites (
   FOREIGN KEY (consumed_by_user_id) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS oauth_mappings (
+  xi_sub TEXT PRIMARY KEY,
+  edgechat_user_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (edgechat_user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS moments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  content TEXT NOT NULL DEFAULT '',
+  image_keys TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS moment_likes (
+  moment_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (moment_id, user_id),
+  FOREIGN KEY (moment_id) REFERENCES moments(id),
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS moment_comments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  moment_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  reply_to_user_id INTEGER,
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (moment_id) REFERENCES moments(id),
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (reply_to_user_id) REFERENCES users(id)
+);
+
 CREATE TABLE IF NOT EXISTS pending_r2_delete (
   object_key TEXT PRIMARY KEY,
   retry_count INTEGER NOT NULL DEFAULT 0,
@@ -100,6 +172,9 @@ VALUES ('site_name', 'Edgechat');
 INSERT OR IGNORE INTO site_settings (setting_key, setting_value)
 VALUES ('site_icon_url', '');
 
+INSERT OR IGNORE INTO site_settings (setting_key, setting_value)
+VALUES ('allow_registration', '0');
+
 CREATE INDEX IF NOT EXISTS idx_messages_channel_created
   ON messages(channel_id, id DESC);
 
@@ -114,6 +189,27 @@ CREATE INDEX IF NOT EXISTS idx_channels_kind
 
 CREATE INDEX IF NOT EXISTS idx_users_username
   ON users(username);
+
+CREATE INDEX IF NOT EXISTS idx_users_chat_id
+  ON users(chat_id);
+
+CREATE INDEX IF NOT EXISTS idx_friendships_requester
+  ON friendships(requester_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_friendships_addressee
+  ON friendships(addressee_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_blacklist_user
+  ON blacklist(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_moments_user
+  ON moments(user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_moments_created
+  ON moments(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_moment_comments_moment
+  ON moment_comments(moment_id, created_at ASC);
 
 CREATE INDEX IF NOT EXISTS idx_registration_invites_active
   ON registration_invites(created_at DESC, deleted_at, consumed_at);

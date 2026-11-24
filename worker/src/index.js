@@ -9,13 +9,16 @@ import {
   putSession,
   verifyPassword
 } from './auth.js';
-import { getSiteSettings, getUserByUsername } from './db.js';
+import { getSiteSettings, getUserByUsername, makeUniqueChatId } from './db.js';
 import { ApiError } from './errors.js';
 import { adminMiddleware, authMiddleware } from './middleware.js';
 import { registerAdminRoutes } from './api/admin.js';
 import { registerChannelRoutes } from './api/channels.js';
 import { registerDmRoutes } from './api/dm.js';
 import { registerMessageRoutes } from './api/messages.js';
+import { registerMomentRoutes } from './api/moments.js';
+import { registerRegistrationRoutes } from './api/registration.js';
+import { registerSocialRoutes } from './api/social.js';
 import { registerUploadRoutes } from './api/upload.js';
 import { ChannelRoom } from './do/ChannelRoom.js';
 import { Scheduler } from './do/Scheduler.js';
@@ -118,16 +121,18 @@ app.post('/api/register-links/:token/register', async (c) => {
   }
 
   const hashed = await hashPassword(password);
+  const chatId = await makeUniqueChatId(c.env.DB, username);
   const result = await c.env.DB.prepare(
     `INSERT INTO users (
        username,
        display_name,
        password_hash,
        password_salt,
-       registration_invite_id
-     ) VALUES (?, ?, ?, ?, ?)`
+       registration_invite_id,
+       chat_id
+     ) VALUES (?, ?, ?, ?, ?, ?)`
   )
-    .bind(username, displayName, hashed.hash, hashed.salt, Number(invite.id))
+    .bind(username, displayName, hashed.hash, hashed.salt, Number(invite.id), chatId)
     .run()
     .catch((error) => {
       if (String(error.message).includes('UNIQUE')) {
@@ -159,7 +164,16 @@ app.post('/api/auth/login', async (c) => {
     return errorResponse('请输入用户名和密码');
   }
 
-  const user = await getUserByUsername(c.env.DB, username);
+  // 支持用户名或细聊号登录
+  let user = await getUserByUsername(c.env.DB, username);
+  if (!user && username.includes('#')) {
+    const { results } = await c.env.DB.prepare(
+      `SELECT * FROM users WHERE chat_id = ? AND deleted_at IS NULL LIMIT 1`
+    )
+      .bind(username)
+      .all();
+    user = results[0] || null;
+  }
   if (!user || Number(user.is_disabled)) {
     return errorResponse('账号或密码错误', 401);
   }
@@ -176,12 +190,15 @@ app.post('/api/auth/login', async (c) => {
   });
 });
 
+// 内置注册（熙熙 OAuth）——必须在认证中间件之前，注册时用户尚未登录
+registerRegistrationRoutes(app);
+
 app.use('/api/*', authMiddleware);
 
 app.get('/api/auth/session', async (c) => {
   const session = c.get('session');
   const user = await c.env.DB.prepare(
-    `SELECT display_name, avatar_key, is_disabled
+    `SELECT display_name, avatar_key, chat_id, is_disabled
      FROM users
      WHERE id = ?
        AND deleted_at IS NULL
@@ -198,6 +215,7 @@ app.get('/api/auth/session', async (c) => {
   const freshSession = {
     ...session,
     displayName: user.results[0].display_name,
+    chatId: user.results[0].chat_id || '',
     avatarUrl: user.results[0].avatar_key ? `/files/${encodeURIComponent(user.results[0].avatar_key)}` : ''
   };
   await putSession(c.env, freshSession);
@@ -298,7 +316,7 @@ app.patch('/api/me/profile', async (c) => {
 app.get('/api/users', async (c) => {
   const session = c.get('session');
   const { results } = await c.env.DB.prepare(
-    `SELECT id, username, display_name, avatar_key
+    `SELECT id, username, display_name, chat_id, avatar_key
      FROM users
      WHERE deleted_at IS NULL
        AND is_disabled = 0
@@ -313,6 +331,7 @@ app.get('/api/users', async (c) => {
       id: Number(row.id),
       username: row.username,
       displayName: row.display_name,
+      chatId: row.chat_id || '',
       avatarUrl: row.avatar_key ? `/files/${encodeURIComponent(row.avatar_key)}` : ''
     }))
   });
@@ -322,7 +341,7 @@ app.get('/api/bootstrap', async (c) => {
   const session = c.get('session');
   const [usersResult, channelsResult, dmsResult] = await Promise.all([
     c.env.DB.prepare(
-      `SELECT id, username, display_name, avatar_key
+      `SELECT id, username, display_name, chat_id, avatar_key
        FROM users
        WHERE deleted_at IS NULL
          AND is_disabled = 0
@@ -438,9 +457,10 @@ app.get('/api/bootstrap', async (c) => {
        WHERE c.kind = 'dm'
          AND c.deleted_at IS NULL
          AND other.deleted_at IS NULL
+         AND other.id NOT IN (SELECT blocked_user_id FROM blacklist WHERE user_id = ?)
        ORDER BY last_message_at DESC NULLS LAST, c.id DESC`
     )
-      .bind(session.userId, session.userId, session.userId, session.userId)
+      .bind(session.userId, session.userId, session.userId, session.userId, session.userId)
       .all()
   ]);
 
@@ -449,6 +469,7 @@ app.get('/api/bootstrap', async (c) => {
       id: Number(row.id),
       username: row.username,
       displayName: row.display_name,
+      chatId: row.chat_id || '',
       avatarUrl: row.avatar_key ? `/files/${encodeURIComponent(row.avatar_key)}` : ''
     })),
     channels: channelsResult.results.map((row) => ({
@@ -485,6 +506,8 @@ app.get('/api/bootstrap', async (c) => {
 app.use('/api/admin/*', adminMiddleware);
 
 registerMessageRoutes(app);
+registerSocialRoutes(app);
+registerMomentRoutes(app);
 registerDmRoutes(app);
 registerUploadRoutes(app);
 registerChannelRoutes(app);

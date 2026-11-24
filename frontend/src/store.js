@@ -15,7 +15,8 @@ const state = reactive({
   session: null,
   site: {
     siteName: 'Xiliao',
-    siteIconUrl: ''
+    siteIconUrl: '',
+    allowRegistration: false
   }
 });
 
@@ -100,7 +101,8 @@ function setSession(session) {
 function setSite(site) {
   state.site = {
     siteName: String(site?.siteName || 'Xiliao').trim() || 'Xiliao',
-    siteIconUrl: String(site?.siteIconUrl || '').trim()
+    siteIconUrl: String(site?.siteIconUrl || '').trim(),
+    allowRegistration: Boolean(site?.allowRegistration)
   };
   applySiteMetadata(state.site);
 }

@@ -28,6 +28,33 @@ export function useChatSidebar({ error, applyActiveChannel, selectDm }) {
 		return users.value.filter((user) => !dmUserIds.has(Number(user.id)));
 	});
 
+	// 折叠的群聊 ID（本地保存）
+	const collapsedGroupIds = ref(loadCollapsedGroups());
+
+	function loadCollapsedGroups() {
+		try {
+			const raw = localStorage.getItem('collapsedGroups');
+			return raw ? JSON.parse(raw) : [];
+		} catch {
+			return [];
+		}
+	}
+	function persistCollapsedGroups() {
+		try {
+			localStorage.setItem('collapsedGroups', JSON.stringify(collapsedGroupIds.value));
+		} catch { /* ignore */ }
+	}
+	function toggleGroupCollapsed(channelId) {
+		const idx = collapsedGroupIds.value.indexOf(Number(channelId));
+		if (idx >= 0) collapsedGroupIds.value.splice(idx, 1);
+		else collapsedGroupIds.value.push(Number(channelId));
+		persistCollapsedGroups();
+	}
+
+	const collapsedGroups = computed(() =>
+		channels.value.filter((c) => collapsedGroupIds.value.includes(Number(c.id)))
+	);
+
 	const conversationItems = computed(() => {
 		const dmItems = dms.value.map((dm) => ({
 			key: `dm:${dm.id}`,
@@ -42,7 +69,9 @@ export function useChatSidebar({ error, applyActiveChannel, selectDm }) {
 			source: dm,
 		}));
 
-		const channelItems = channels.value.map((channel) => ({
+		const channelItems = channels.value
+			.filter((channel) => !collapsedGroupIds.value.includes(Number(channel.id)))
+			.map((channel) => ({
 			key: `${channel.kind}:${channel.id}`,
 			id: channel.id,
 			kind: channel.kind,
@@ -213,6 +242,9 @@ export function useChatSidebar({ error, applyActiveChannel, selectDm }) {
 		groupVisibilityOptions,
 		usersWithoutDm,
 		conversationItems,
+		collapsedGroups,
+		collapsedGroupIds,
+		toggleGroupCollapsed,
 		formatListTime,
 		markConversationRead,
 		applyConversationActivity,

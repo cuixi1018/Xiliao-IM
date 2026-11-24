@@ -31,6 +31,9 @@ function isInlineContentType(contentType) {
   if (contentType.startsWith('video/')) {
     return true;
   }
+  if (contentType.startsWith('audio/')) {
+    return true;
+  }
   return false;
 }
 

@@ -3,327 +3,85 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../api.js';
 import store from '../store.js';
-import { useCursor } from '../composables/useCursor.js';
 
 const route = useRoute();
 const router = useRouter();
 const loading = ref(false);
-const validating = ref(false);
+const validating = ref(true);
 const error = ref('');
 const invite = ref(null);
-
-const form = reactive({
-  username: '',
-  displayName: '',
-  password: '',
-  confirmPassword: ''
-});
-
+const form = reactive({ username: '', displayName: '', password: '', confirmPassword: '' });
 const token = computed(() => String(route.params.token || '').trim());
-
-const usernameInput = ref(null);
-const displayNameInput = ref(null);
-const passwordInput = ref(null);
-const confirmPasswordInput = ref(null);
-const usernameCursor = ref(null);
-const displayNameCursor = ref(null);
-const passwordCursor = ref(null);
-const confirmPasswordCursor = ref(null);
-
-useCursor([
-  [usernameInput, usernameCursor],
-  [displayNameInput, displayNameCursor],
-  [passwordInput, passwordCursor],
-  [confirmPasswordInput, confirmPasswordCursor]
-], invite);
 
 async function loadInvite() {
   validating.value = true;
-  error.value = '';
   try {
     const payload = await api.getRegisterInvite(token.value);
     invite.value = payload.invite;
-    if (payload.site) {
-      store.setSite(payload.site);
-    }
-  } catch (currentError) {
-    error.value = currentError.message;
+    if (payload.site) store.setSite(payload.site);
+  } catch (e) {
+    error.value = e.message;
   } finally {
     validating.value = false;
   }
 }
 
 async function submit() {
-  if (form.password !== form.confirmPassword) {
-    error.value = '两次输入的密码不一致';
-    return;
-  }
-
+  if (form.password !== form.confirmPassword) { error.value = '两次输入的密码不一致'; return; }
+  if (form.password.length < 6) { error.value = '密码至少 6 位'; return; }
   loading.value = true;
   error.value = '';
   try {
     await api.registerWithInvite(token.value, form);
     router.push({ name: 'login', query: { registered: '1' } });
-  } catch (currentError) {
-    error.value = currentError.message;
+  } catch (e) {
+    error.value = e.message;
   } finally {
     loading.value = false;
   }
 }
 
-onMounted(() => {
-  loadInvite();
-});
+onMounted(loadInvite);
 </script>
 
 <template>
-  <div class="login-page">
-    <div class="login-container">
-      <div class="title-group">
-        <h1 class="welcome-text">Welcome Back</h1>
-        <h2 class="brand-name">{{ store.site.siteName }}</h2>
+  <div class="wx-login">
+    <div class="wx-login__card">
+      <div class="wx-login__brand">
+        <div class="wx-login__logo">💬</div>
+        <h1>{{ store.site.siteName }}</h1>
+        <p>邀请注册</p>
       </div>
-
-      <p v-if="validating" class="info-text">正在验证注册链接...</p>
-      <p v-else-if="invite?.note" class="info-text">邀请说明：{{ invite.note }}</p>
-      <p v-if="error" class="error-text">{{ error }}</p>
-
-      <form v-if="invite && !error" class="login-form" @submit.prevent="submit">
-        <div class="input-wrapper">
-          <span ref="usernameCursor" class="custom-cursor"></span>
-          <input
-            ref="usernameInput"
-            v-model.trim="form.username"
-            class="login-input"
-            placeholder="用户名"
-            autocomplete="username"
-            type="text"
-          />
-        </div>
-        <div class="input-wrapper">
-          <span ref="displayNameCursor" class="custom-cursor"></span>
-          <input
-            ref="displayNameInput"
-            v-model.trim="form.displayName"
-            class="login-input"
-            placeholder="显示名称"
-            autocomplete="nickname"
-            type="text"
-          />
-        </div>
-        <div class="input-wrapper">
-          <span ref="passwordCursor" class="custom-cursor"></span>
-          <input
-            ref="passwordInput"
-            v-model="form.password"
-            class="login-input"
-            placeholder="密码"
-            autocomplete="new-password"
-            type="password"
-          />
-        </div>
-        <div class="input-wrapper">
-          <span ref="confirmPasswordCursor" class="custom-cursor"></span>
-          <input
-            ref="confirmPasswordInput"
-            v-model="form.confirmPassword"
-            class="login-input"
-            placeholder="确认密码"
-            autocomplete="new-password"
-            type="password"
-          />
-        </div>
-
-        <button class="login-btn" :disabled="loading" type="submit">
-          {{ loading ? '注册中...' : '完成注册' }}
-        </button>
+      <p v-if="validating" class="hint">正在验证注册链接…</p>
+      <p v-else-if="invite?.note" class="hint">{{ invite.note }}</p>
+      <p v-if="error" class="hint err">{{ error }}</p>
+      <form v-if="invite && !error" class="wx-login__form" @submit.prevent="submit">
+        <div class="field"><input v-model.trim="form.username" placeholder="用户名" autocomplete="username" /></div>
+        <div class="field"><input v-model.trim="form.displayName" placeholder="显示名称" /></div>
+        <div class="field"><input v-model="form.password" type="password" placeholder="密码（至少6位）" /></div>
+        <div class="field"><input v-model="form.confirmPassword" type="password" placeholder="确认密码" /></div>
+        <button class="primary" :disabled="loading" type="submit">{{ loading ? '注册中…' : '完成注册' }}</button>
       </form>
+      <div class="wx-login__links"><button type="button" @click="router.push('/login')">返回登录</button></div>
     </div>
   </div>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Great+Vibes&family=Dancing+Script:wght@500;700&display=swap');
-
-.login-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background-color: #f5f5f5;
-  position: relative;
-  overflow: hidden;
-}
-
-.login-page::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  background: linear-gradient(to bottom, transparent 0%, #e1ecf5 25%, #e6eff6 100%);
-  transform: translateY(100%);
-  animation: tideRise 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  pointer-events: none;
-}
-
-@keyframes tideRise {
-  to { transform: translateY(0); }
-}
-
-.login-container {
-  width: 100%;
-  max-width: 420px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative;
-  z-index: 1;
-}
-
-.title-group {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.welcome-text {
-  font-family: 'Dancing Script', cursive;
-  font-size: 56px;
-  font-weight: 700;
-  color: #2c4a6e;
-  margin: 0 0 10px;
-  letter-spacing: 1px;
-  opacity: 0;
-  animation: fadeUp 0.7s ease-out 0.8s forwards;
-}
-
-.brand-name {
-  font-family: 'Great Vibes', cursive;
-  font-size: 52px;
-  font-weight: 400;
-  color: #5b8dbf;
-  margin: -8px 0 48px;
-  letter-spacing: 2px;
-  opacity: 0;
-  animation: fadeUp 0.7s ease-out 1s forwards;
-  text-shadow: 0 2px 8px rgba(91, 141, 191, 0.15);
-}
-
-@keyframes fadeUp {
-  0% { opacity: 0; transform: translateY(18px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-
-.info-text {
-  font-size: 13px;
-  color: #6b8aab;
-  margin: -32px 0 28px;
-  text-align: center;
-}
-
-.login-form {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.input-wrapper {
-  position: relative;
-  width: 100%;
-  opacity: 0;
-  animation: slideInRight 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-.input-wrapper:nth-child(1) { animation-delay: 1.2s; }
-.input-wrapper:nth-child(2) { animation-delay: 1.3s; }
-.input-wrapper:nth-child(3) { animation-delay: 1.4s; }
-.input-wrapper:nth-child(4) { animation-delay: 1.5s; }
-
-@keyframes slideInRight {
-  0% { opacity: 0; transform: translateX(32px); }
-  100% { opacity: 1; transform: translateX(0); }
-}
-
-.custom-cursor {
-  position: absolute;
-  width: 3px;
-  background-color: #2c4a6e;
-  border-radius: 2px;
-  opacity: 0;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.custom-cursor.visible {
-  animation: blink 1s infinite;
-}
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-
-.login-input {
-  width: 100%;
-  height: 56px;
-  padding: 0 4px;
-  border: none;
-  background: transparent;
-  font-size: 18px;
-  font-weight: 500;
-  color: #2c4a6e;
-  outline: none;
-  caret-color: transparent;
-}
-
-.login-input::placeholder {
-  color: #2c4a6e;
-  text-decoration: underline;
-  text-decoration-color: #5b8dbf;
-  text-decoration-thickness: 3px;
-  text-underline-offset: 8px;
-}
-
-.login-btn {
-  width: fit-content;
-  height: auto;
-  border: none;
-  border-bottom: 3px solid #5b8dbf;
-  background: transparent;
-  color: #2c4a6e;
-  font-size: 24px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: border-color 0.2s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-  margin: 8px auto 0;
-  letter-spacing: 2px;
-  padding: 0 4px 8px;
-  opacity: 0;
-  animation: riseUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) 1.7s forwards;
-}
-
-@keyframes riseUp {
-  0% { opacity: 0; transform: translateY(24px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-
-.login-btn:hover:not(:disabled) {
-  border-bottom-color: #2c4a6e;
-  transform: scale(1.04);
-}
-
-.login-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  animation: none;
-}
-
-.error-text {
-  font-size: 13px;
-  color: #d9534f;
-  margin: 0;
-  text-align: center;
-}
+.wx-login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: linear-gradient(160deg, #eef2f5 0%, #dfe6e4 100%); box-sizing: border-box; }
+.wx-login__card { width: min(400px, 100%); background: #fff; border-radius: 16px; padding: 40px 34px 32px; box-shadow: 0 12px 40px rgba(0,0,0,0.06); }
+.wx-login__brand { text-align: center; margin-bottom: 28px; }
+.wx-login__logo { width: 60px; height: 60px; margin: 0 auto 14px; border-radius: 14px; background: #07c160; display: flex; align-items: center; justify-content: center; font-size: 32px; }
+.wx-login__brand h1 { margin: 0; font-size: 22px; font-weight: 600; color: #191919; }
+.wx-login__brand p { margin: 6px 0 0; font-size: 13px; color: #9a9a9a; }
+.hint { margin: 0 0 14px; padding: 9px 12px; border-radius: 8px; font-size: 13px; text-align: center; background: #f5f8f6; color: #5a7a68; }
+.hint.err { background: #fdeaea; color: #c0392b; }
+.wx-login__form { display: flex; flex-direction: column; gap: 14px; }
+.field { display: flex; align-items: center; height: 48px; padding: 0 14px; border: 1px solid #e3e3e3; border-radius: 8px; transition: border-color 150ms; }
+.field:focus-within { border-color: #07c160; }
+.field input { flex: 1; border: none; outline: none; font-size: 15px; color: #191919; }
+.primary { margin-top: 8px; height: 46px; border: none; border-radius: 8px; background: #07c160; color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; }
+.primary:disabled { opacity: 0.6; }
+.wx-login__links { display: flex; justify-content: center; margin-top: 16px; }
+.wx-login__links button { border: none; background: transparent; color: #576b95; font-size: 13px; cursor: pointer; }
 </style>

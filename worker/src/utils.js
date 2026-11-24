@@ -45,6 +45,7 @@ export function pickAttachment(payload) {
     name: String(payload.name),
     type: String(payload.type),
     size: Number(payload.size) || 0,
+    ...(payload.duration ? { duration: Number(payload.duration) } : {}),
     url: `/files/${encodeURIComponent(String(payload.key))}`
   };
 }
@@ -67,4 +68,24 @@ export function randomToken(byteLength = 24) {
   const bytes = crypto.getRandomValues(new Uint8Array(byteLength));
   const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('');
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+// 细聊号：用户名 + '#' + 4 位随机后缀（大写字母/数字），如 cuixi#8F3A
+const CHAT_ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+export function sanitizeChatUsername(username) {
+  // _username_ 里允许的字符收敛为字母数字下划线，作为细聊号前缀
+  return String(username || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '')
+    .slice(0, 20) || 'user';
+}
+
+export function generateChatId(username) {
+  const bytes = crypto.getRandomValues(new Uint8Array(4));
+  let suffix = '';
+  for (const byte of bytes) {
+    suffix += CHAT_ID_ALPHABET[byte % CHAT_ID_ALPHABET.length];
+  }
+  return `${sanitizeChatUsername(username)}#${suffix}`;
 }
