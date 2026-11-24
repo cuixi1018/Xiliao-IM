@@ -11,6 +11,11 @@ const error = ref('');
 const form = reactive({ username: '', password: '' });
 const registered = computed(() => route.query.registered === '1');
 
+const REGISTER_SITE_URL = import.meta.env.VITE_REGISTER_SITE_URL || 'https://reg.xl.cuixi.qzz.io/';
+function goRegister() {
+  window.location.href = REGISTER_SITE_URL;
+}
+
 async function submit() {
   if (!form.username.trim() || !form.password) {
     error.value = '请输入账号和密码';
@@ -57,7 +62,7 @@ async function submit() {
         <button
           v-if="store.site.allowRegistration"
           type="button"
-          @click="router.push('/register-oauth')"
+          @click="goRegister"
         >注册新账号</button>
       </div>
 
