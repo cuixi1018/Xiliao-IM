@@ -134,9 +134,9 @@ CREATE TABLE IF NOT EXISTS registration_invites (
 
 CREATE TABLE IF NOT EXISTS oauth_mappings (
   xi_sub TEXT PRIMARY KEY,
-  edgechat_user_id INTEGER NOT NULL,
+  xlim_user_id INTEGER NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (edgechat_user_id) REFERENCES users(id)
+  FOREIGN KEY (xlim_user_id) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS moments (

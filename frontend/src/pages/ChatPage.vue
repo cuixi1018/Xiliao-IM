@@ -50,11 +50,32 @@ const { connectUnreadInbox, disconnectUnreadInbox } = useUnreadInbox({
 
 const wsConnected = computed(() => wsStatus.value === 'open');
 
+// 移动端：从聊天窗口返回会话列表
+function backToList() {
+  disconnectSocket();
+  activeRoom.value = null;
+  messages.value = [];
+}
+
 const showCreateGroup = ref(false);
 const createGroupForm = reactive({ name: '', memberIds: [] });
 const creatingGroup = ref(false);
+const friendUsers = ref([]); // 创建群聊时仅可选自己的好友
 
-function openCreateGroup() { showCreateGroup.value = true; }
+async function openCreateGroup() {
+  // 仅拉取已成为好友的用户，避免把全站用户当可选成员
+  try {
+    const data = await api.getFriends();
+    friendUsers.value = (data.friends || []).map((f) => ({
+      id: f.id,
+      displayName: f.remarkName || f.displayName || f.username,
+      avatarUrl: f.avatarUrl || ''
+    }));
+  } catch {
+    friendUsers.value = [];
+  }
+  showCreateGroup.value = true;
+}
 function closeCreateGroup() {
   showCreateGroup.value = false;
   createGroupForm.name = '';
@@ -86,6 +107,45 @@ async function createGroup() {
     error.value = e.message;
   } finally {
     creatingGroup.value = false;
+  }
+}
+
+// ===== 侧边栏加号菜单：创建群聊 / 添加好友 =====
+const plusMenuOpen = ref(false);
+function togglePlusMenu() {
+  plusMenuOpen.value = !plusMenuOpen.value;
+}
+function plusCreateGroup() {
+  plusMenuOpen.value = false;
+  openCreateGroup();
+}
+function plusAddFriend() {
+  plusMenuOpen.value = false;
+  addFriendChatId.value = '';
+  showAddFriend.value = true;
+}
+
+const showAddFriend = ref(false);
+const addFriendChatId = ref('');
+const addFriendNote = ref('');
+const addFriendSubmitting = ref(false);
+async function submitAddFriend() {
+  const chatId = addFriendChatId.value.trim();
+  if (!chatId) { error.value = '请输入对方的细聊号'; return; }
+  addFriendSubmitting.value = true;
+  error.value = '';
+  try {
+    await api.addFriend({ chatId, note: addFriendNote.value.trim() });
+    showAddFriend.value = false;
+    addFriendChatId.value = '';
+    addFriendNote.value = '';
+    error.value = `已向细聊号 ${chatId} 发送好友请求`;
+    window.setTimeout(() => { if (error.value.startsWith('已向细聊号')) error.value = ''; }, 2600);
+    await refreshSidebar();
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    addFriendSubmitting.value = false;
   }
 }
 
@@ -441,6 +501,11 @@ onMounted(() => {
   void bootstrap().then(connectUnreadInbox);
   checkWelcome();
 });
+// 把系统消息与普通消息分开，避免在模板的 v-for 元素上再用 v-if
+// （v-for + v-if 同元素会被 Vue 编译优化提升，导致 msg 未定义的运行时错误 → 群聊蓝屏）
+const systemMessages = computed(() => messages.value.filter((m) => m?.kind === 'system'));
+const userMessages = computed(() => messages.value.filter((m) => m?.kind !== 'system'));
+
 function formatBubbleTime(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -456,7 +521,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="chat-layout">
+  <div class="chat-layout" :class="{ 'has-active-room': !!activeRoom }">
     <!-- Far-Left Navigation Sidebar -->
     <WechatNav active="chat" />
 
@@ -468,13 +533,23 @@ onBeforeUnmount(() => {
           <button type="button" class="header-action" @click="searchOpen = !searchOpen" title="搜索">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </button>
-          <button type="button" class="header-action" @click="openCreateGroup" title="创建群聊">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-              <title>创建群聊</title>
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-              <line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>
-            </svg>
-          </button>
+          <div class="plus-wrap">
+            <button type="button" class="header-action" @click="togglePlusMenu" title="添加">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+            <div v-if="plusMenuOpen" class="plus-menu" @click.self="plusMenuOpen = false">
+              <button type="button" class="plus-menu__item" @click="plusAddFriend">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="8" r="4"/><path d="M2 21v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+                <span>添加好友</span>
+              </button>
+              <button type="button" class="plus-menu__item" @click="plusCreateGroup">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><circle cx="18" cy="8" r="3"/><path d="M18 14a3 3 0 0 0 3 3"/></svg>
+                <span>创建群聊</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         <div v-if="searchOpen" class="global-search-box">
@@ -559,6 +634,9 @@ onBeforeUnmount(() => {
     <main class="chat-main">
       <template v-if="activeRoom">
         <header class="chat-header">
+          <button type="button" class="chat-back-btn" title="返回" @click="backToList">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
           <h2>{{ roomLabel(activeRoom) }}</h2>
           <div class="chat-header__status" :class="wsConnected ? 'online' : 'offline'"></div>
           <button type="button" class="chat-header__more" title="更多" @click="showMoreMenu = !showMoreMenu">⋯</button>
@@ -574,11 +652,13 @@ onBeforeUnmount(() => {
           <div v-if="loading" class="messages-hint">加载中...</div>
           <div v-else-if="!messages.length" class="messages-hint">暂无消息</div>
 
-          <div v-if="msg.kind === 'system'" class="system-message" v-for="msg in messages" :key="'sys-'+msg.id">
-            <span>{{ msg.content }}</span>
-          </div>
+          <template v-for="msg in systemMessages" :key="'sys-'+msg.id">
+            <div class="system-message">
+              <span>{{ msg.content }}</span>
+            </div>
+          </template>
           <article
-            v-for="msg in messages.filter(m => m.kind !== 'system')" :key="msg.id"
+            v-for="msg in userMessages" :key="msg.id"
             class="message-row" :class="{ 'message-row--own': isOwnMessage(msg) }"
             @contextmenu="openMsgMenu(msg, $event)"
             @touchstart="startLongPress(msg, $event)"
@@ -672,7 +752,7 @@ onBeforeUnmount(() => {
             <label>选择成员</label>
             <div class="member-list">
               <button
-                v-for="user in users" :key="user.id" type="button"
+                v-for="user in friendUsers" :key="user.id" type="button"
                 class="member-chip"
                 :class="{ 'member-chip--selected': createGroupForm.memberIds.includes(user.id) }"
                 @click="toggleMember(user.id)"
@@ -680,6 +760,7 @@ onBeforeUnmount(() => {
                 <UiAvatar :src="user.avatarUrl" :fallback="user.displayName?.[0] || '?'" size="sm" />
                 <span>{{ user.displayName }}</span>
               </button>
+              <p v-if="!friendUsers.length" class="member-empty">你还没有好友，请先在通讯录添加好友后再创建群聊</p>
             </div>
           </div>
           <div class="modal-actions">
@@ -691,6 +772,40 @@ onBeforeUnmount(() => {
               @click="createGroup"
             >
               {{ creatingGroup ? '创建中...' : '创建' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 添加好友弹窗（输入细聊号） -->
+    <Transition name="modal-fade">
+      <div v-if="showAddFriend" class="modal-overlay" @click.self="showAddFriend = false">
+        <div class="modal-card">
+          <h3>添加好友</h3>
+          <p class="add-friend-hint">输入对方的细聊号，发送好友申请</p>
+          <input
+            v-model="addFriendChatId"
+            type="text"
+            class="modal-input"
+            placeholder="请输入细聊号，例如 xlofficial"
+            @keyup.enter="submitAddFriend"
+          />
+          <input
+            v-model="addFriendNote"
+            type="text"
+            class="modal-input"
+            placeholder="验证消息（选填）"
+          />
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" @click="showAddFriend = false">取消</button>
+            <button
+              type="button"
+              class="btn-primary"
+              :disabled="!addFriendChatId.trim() || addFriendSubmitting"
+              @click="submitAddFriend"
+            >
+              {{ addFriendSubmitting ? '发送中...' : '发送申请' }}
             </button>
           </div>
         </div>
@@ -855,6 +970,47 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.05);
   color: #111b21;
 }
+
+/* 侧边栏加号下拉菜单 */
+.plus-wrap {
+  position: relative;
+  display: flex;
+}
+.plus-menu {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  width: 172px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 6px;
+  z-index: 60;
+  animation: plusMenuIn 0.16s ease;
+}
+.plus-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #191919;
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 150ms;
+}
+.plus-menu__item svg { color: #008069; flex-shrink: 0; }
+.plus-menu__item:hover { background: #f2f5f4; }
+@keyframes plusMenuIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.add-friend-hint { margin: 0 0 10px; font-size: 13px; color: #888; }
 
 .sidebar-section {
   flex-shrink: 0;
@@ -1577,21 +1733,60 @@ onBeforeUnmount(() => {
 .gm-danger-zone { border-top: 1px solid #f0f0f0; padding-top: 12px; }
 .btn-danger { padding: 8px 16px; border: none; border-radius: 8px; background: #fa5151; color: #fff; font-size: 13px; cursor: pointer; }
 
+/* 返回按钮：默认隐藏，移动端显示 */
+.chat-back-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  margin-left: -6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #576b75;
+  cursor: pointer;
+}
+
 @media (max-width: 768px) {
+  /* 移动端改为微信式单栏：会话列表 / 聊天窗口二选一 */
+  .chat-layout {
+    width: 100vw;
+    overflow: hidden;
+  }
+  .wx-nav {
+    display: none;
+  }
   .left-sidebar {
-    width: 280px;
+    width: 100%;
+    flex-basis: 100%;
+    border-right: none;
   }
   .right-sidebar {
-    width: 60px;
-    padding: 10px 4px;
+    display: none;
   }
-  .right-sidebar-inner {
-    padding: 10px 4px;
+  .chat-main {
+    display: none;
+    width: 100%;
   }
-  .right-sidebar-action,
-  .right-sidebar-user {
-    width: 36px;
-    height: 36px;
+  /* 打开会话后：隐藏列表，显示聊天窗口 */
+  .chat-layout.has-active-room .left-sidebar {
+    display: none;
+  }
+  .chat-layout.has-active-room .chat-main {
+    display: flex;
+  }
+  .chat-back-btn {
+    display: flex;
+  }
+  .chat-header h2 {
+    font-size: 16px;
+  }
+  /* 移动端消息区占满，避免被挤压导致白屏 */
+  .chat-messages {
+    min-height: 0;
+    flex: 1;
   }
 }
 </style>

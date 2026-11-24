@@ -94,6 +94,15 @@ async function createTable(name, ddl) {
   applied += 1;
 }
 
+async function renameColumn(table, from, to) {
+  if (!(await tableExists(table))) return;
+  if (await columnExists(table, from) && !(await columnExists(table, to))) {
+    console.log(`  ~ rename column ${table}.${from} -> ${to}`);
+    await query(`ALTER TABLE ${table} RENAME COLUMN ${from} TO ${to}`);
+    applied += 1;
+  }
+}
+
 async function createIndex(name, ddl) {
   if (await indexExists(name)) {
     return;
@@ -187,11 +196,13 @@ async function main() {
     )`,
   );
 
+  // 兼容旧字段名：edgechat_user_id -> xlim_user_id
+  await renameColumn("oauth_mappings", "edgechat_user_id", "xlim_user_id");
   await createTable(
     "oauth_mappings",
     `CREATE TABLE IF NOT EXISTS oauth_mappings (
       xi_sub TEXT PRIMARY KEY,
-      edgechat_user_id INTEGER NOT NULL,
+      xlim_user_id INTEGER NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
   );

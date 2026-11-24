@@ -60,9 +60,9 @@ VALUES ('allow_registration', '1');
 -- 6) 熙熙账号 -> 细聊用户映射（内置注册防重复）
 CREATE TABLE IF NOT EXISTS oauth_mappings (
   xi_sub TEXT PRIMARY KEY,
-  edgechat_user_id INTEGER NOT NULL,
+  xlim_user_id INTEGER NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (edgechat_user_id) REFERENCES users(id)
+  FOREIGN KEY (xlim_user_id) REFERENCES users(id)
 );
 
 -- 7) 朋友圈动态

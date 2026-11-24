@@ -106,19 +106,10 @@ export function registerRegistrationRoutes(app) {
     });
   });
 
-  // 用临时令牌创建细聊账号（自动生成细聊号）
-  app.post('/api/reg/register', async (c) => {
-    if (!(await ensureRegistrationOpen(c))) {
-      return regDisabledResponse(c);
-    }
-    const payload = await parseJsonRequest(c.req.raw);
-    const tempToken = String(payload.tempToken || '').trim();
-    const username = String(payload.username || '').trim();
-    const password = String(payload.password || '');
-    const displayName = String(payload.displayName || username).trim();
-
-    if (!tempToken) {
-      return errorResponse('临时令牌缺失', 400);
+  // 共用：按熙熙账号唯一标识创建细聊账号（自动生成细聊号、欢迎流程、去重）
+  async function createXiliaoUser(c, { xiSub, username, password, displayName }) {
+    if (!xiSub) {
+      return errorResponse('授权信息不完整', 400);
     }
     if (!username) {
       return errorResponse('用户名不能为空', 400);
@@ -126,28 +117,10 @@ export function registerRegistrationRoutes(app) {
     if (password.length < 6) {
       return errorResponse('密码至少 6 位', 400);
     }
-    if (!c.env.OAUTH_TEMP) {
-      return errorResponse('缺少 OAUTH_TEMP 存储绑定，请联系管理员', 500);
-    }
-
-    const raw = await c.env.OAUTH_TEMP.get(tempToken);
-    if (!raw) {
-      return errorResponse('临时令牌无效或已过期，请重新授权', 400);
-    }
-    let userInfo;
-    try {
-      userInfo = JSON.parse(raw);
-    } catch {
-      return errorResponse('令牌数据损坏', 500);
-    }
-    const xiSub = String(userInfo.sub || '');
-    if (!xiSub) {
-      return errorResponse('授权信息不完整', 400);
-    }
 
     // 防重复注册
     const existing = await c.env.DB.prepare(
-      'SELECT edgechat_user_id FROM oauth_mappings WHERE xi_sub = ? LIMIT 1'
+      'SELECT xlim_user_id FROM oauth_mappings WHERE xi_sub = ? LIMIT 1'
     )
       .bind(xiSub)
       .all();
@@ -174,17 +147,77 @@ export function registerRegistrationRoutes(app) {
 
     const userId = Number(result.meta.last_row_id);
     await c.env.DB.prepare(
-      'INSERT INTO oauth_mappings (xi_sub, edgechat_user_id) VALUES (?, ?)'
+      'INSERT INTO oauth_mappings (xi_sub, xlim_user_id) VALUES (?, ?)'
     )
       .bind(xiSub, userId)
       .run();
-    await c.env.OAUTH_TEMP.delete(tempToken);
 
     await welcomeNewUser(c.env, userId, displayName);
 
-    return c.json({
-      ok: true,
-      user: { id: userId, username, displayName, chatId }
-    });
+    return { ok: true, user: { id: userId, username, displayName, chatId } };
+  }
+
+  // 用临时令牌创建细聊账号（自动生成细聊号）——主站内置 OAuth 注册用
+  app.post('/api/reg/register', async (c) => {
+    if (!(await ensureRegistrationOpen(c))) {
+      return regDisabledResponse(c);
+    }
+    const payload = await parseJsonRequest(c.req.raw);
+    const tempToken = String(payload.tempToken || '').trim();
+    const username = String(payload.username || '').trim();
+    const password = String(payload.password || '');
+    const displayName = String(payload.displayName || username).trim();
+
+    if (!tempToken) {
+      return errorResponse('临时令牌缺失', 400);
+    }
+    if (!c.env.OAUTH_TEMP) {
+      return errorResponse('缺少 OAUTH_TEMP 存储绑定，请联系管理员', 500);
+    }
+
+    const raw = await c.env.OAUTH_TEMP.get(tempToken);
+    if (!raw) {
+      return errorResponse('临时令牌无效或已过期，请重新授权', 400);
+    }
+    let userInfo;
+    try {
+      userInfo = JSON.parse(raw);
+    } catch {
+      return errorResponse('令牌数据损坏', 500);
+    }
+    const xiSub = String(userInfo.sub || '');
+
+    const result = await createXiliaoUser(c, { xiSub, username, password, displayName });
+    if (result instanceof Response) return result;
+    if (result.ok) await c.env.OAUTH_TEMP.delete(tempToken);
+    return c.json(result);
+  });
+
+  // 专用注册接口：独立注册站直接调用，用共享密钥认证，无需管理员账号密码登录
+  app.post('/api/public/oauth-register', async (c) => {
+    if (!(await ensureRegistrationOpen(c))) {
+      return regDisabledResponse(c);
+    }
+    const configuredSecret = String(c.env.REGISTER_SECRET || '');
+    if (!configuredSecret) {
+      return errorResponse('注册接口未配置密钥', 500);
+    }
+    const providedSecret = String(
+      c.req.header('X-Register-Secret') || ''
+    ).trim();
+    // 简单字符串比较（定时安全无关紧要，此处仅作访问控制）
+    if (providedSecret !== configuredSecret) {
+      return errorResponse('注册密钥无效', 401);
+    }
+
+    const payload = await parseJsonRequest(c.req.raw);
+    const xiSub = String(payload.xiSub || '').trim();
+    const username = String(payload.username || '').trim();
+    const password = String(payload.password || '');
+    const displayName = String(payload.displayName || username).trim();
+
+    const result = await createXiliaoUser(c, { xiSub, username, password, displayName });
+    if (result instanceof Response) return result;
+    return c.json(result);
   });
 }

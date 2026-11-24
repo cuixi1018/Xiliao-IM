@@ -63,6 +63,20 @@ async function resetPassword(user) {
   await api.resetPassword(user.id, password);
 }
 
+// 点击用户 ID / 细聊号即可复制
+async function copyText(text, label) {
+  if (!text || text === '—') return;
+  try {
+    await navigator.clipboard.writeText(text);
+    error.value = `${label}已复制：${text}`;
+    window.setTimeout(() => {
+      if (error.value.startsWith(`${label}已复制`)) error.value = '';
+    }, 1600);
+  } catch {
+    error.value = `复制失败，${label}：${text}`;
+  }
+}
+
 // ===== 封号（支持时长）=====
 const banForm = reactive({ show: false, user: null, mode: 'hours', hours: 24 });
 function openBan(user) {
@@ -243,6 +257,7 @@ onMounted(loadUsers);
             <thead>
               <tr>
                 <th>用户</th>
+                <th>用户 ID</th>
                 <th>状态</th>
                 <th>创建时间</th>
                 <th>操作</th>
@@ -253,6 +268,12 @@ onMounted(loadUsers);
                 <td>
                   <strong>{{ user.displayName }}</strong>
                   <div class="muted">@{{ user.username }}</div>
+                </td>
+                <td>
+                  <div class="uid-cell">
+                    <span class="uid-badge" title="细聊号" @click="copyText(user.chatId, '细聊号')">{{ user.chatId || '—' }}</span>
+                    <span class="uid-num" title="数据库 ID" @click="copyText(String(user.id), '用户 ID')">ID {{ user.id }}</span>
+                  </div>
                 </td>
                 <td>
                   <span v-if="user.bannedUntil === 'permanent'" class="ban-tag">永久封禁</span>
@@ -305,6 +326,12 @@ onMounted(loadUsers);
 </template>
 
 <style scoped>
+.uid-cell { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.uid-badge { font-size: 11px; color: #2c4a6e; background: rgba(91,141,191,0.08); padding: 1px 7px; border-radius: 6px; cursor: pointer; user-select: all; }
+.uid-badge:hover { background: rgba(91,141,191,0.18); }
+.uid-num { font-size: 10px; color: #8aa; cursor: pointer; user-select: all; }
+.uid-num:hover { color: #5b8dbf; }
+
 .ban-tag { display: inline-block; padding: 2px 8px; border-radius: 10px; background: #fdeaea; color: #fa5151; font-size: 11px; }
 .ban-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .ban-dialog { width: 380px; max-width: 92vw; background: #fff; border-radius: 14px; padding: 22px; }
