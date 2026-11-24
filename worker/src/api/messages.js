@@ -251,11 +251,6 @@ export function registerMessageRoutes(app) {
       return errorResponse('原消息不存在或已撤回', 404);
     }
 
-    // 语音消息不支持转发
-    if (source.attachment && String(source.attachment.type || '').startsWith('audio/')) {
-      return errorResponse('语音消息不支持转发');
-    }
-
     const room = await requireAccessibleRoom(
       c.env.DB, session.userId, toKind, toRoomId, session.isAdmin
     );
