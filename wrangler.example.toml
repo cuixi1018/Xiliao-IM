@@ -32,8 +32,11 @@ binding = "SESSIONS"
 id = "YOUR_KV_NAMESPACE_ID_HERE"
 
 [[kv_namespaces]]
+# 复用与 SESSIONS 相同的 KV namespace：CI 只替换 YOUR_KV_NAMESPACE_ID_HERE，
+# 用同一个占位符可确保部署时占位符被正确替换，避免 "namespace id not valid" 部署失败。
+# 临时注册令牌与会话 token 的 key 前缀不同，不会冲突。
 binding = "OAUTH_TEMP"
-id = "YOUR_OAUTH_TEMP_KV_NAMESPACE_ID_HERE"
+id = "YOUR_KV_NAMESPACE_ID_HERE"
 
 [[r2_buckets]]
 binding = "FILES"
