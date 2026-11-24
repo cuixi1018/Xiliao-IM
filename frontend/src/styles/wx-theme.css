@@ -4,6 +4,8 @@
   --wx-green-dark: #06ad56;
   --wx-ink: #191919;
   --wx-muted: #7a7a7a;
+  /* 兼容旧样式中引用的过渡变量，消除构建期 CSS 警告 */
+  --transition-soft: 180ms ease;
 }
 
 /* 管理后台 / 遗留页面中的蓝色文字统一为深灰或微信绿 */

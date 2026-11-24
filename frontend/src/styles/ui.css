@@ -142,14 +142,9 @@ select.ui-input {
 .ui-input:focus,
 .ui-textarea:focus,
 select.ui-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: #07c160;
+  box-shadow: 0 0 0 3px rgba(7, 193, 96, 0.1);
   background: #fff;
-}
-  transition:
-    border-color var(--transition-soft),
-    background var(--transition-soft),
-    box-shadow var(--transition-soft);
 }
 
 .ui-input::placeholder,
