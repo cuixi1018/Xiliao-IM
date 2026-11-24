@@ -15,6 +15,7 @@ import { adminMiddleware, authMiddleware } from './middleware.js';
 import { registerAdminRoutes } from './api/admin.js';
 import { registerChannelRoutes } from './api/channels.js';
 import { registerDmRoutes } from './api/dm.js';
+import { registerExtraRoutes } from './api/extras.js';
 import { registerMessageRoutes } from './api/messages.js';
 import { registerMomentRoutes } from './api/moments.js';
 import { registerRegistrationRoutes } from './api/registration.js';
@@ -24,6 +25,7 @@ import { ChannelRoom } from './do/ChannelRoom.js';
 import { Scheduler } from './do/Scheduler.js';
 import { UserInbox } from './do/UserInbox.js';
 import { runScheduledGc } from './gc.js';
+import { welcomeNewUser } from './team.js';
 import {
   errorResponse,
   parseJsonRequest,
@@ -153,6 +155,8 @@ app.post('/api/register-links/:token/register', async (c) => {
     .bind(Number(result.meta.last_row_id), Number(invite.id))
     .run();
 
+  await welcomeNewUser(c.env, Number(result.meta.last_row_id), displayName);
+
   return c.json({ ok: true });
 });
 
@@ -177,6 +181,17 @@ app.post('/api/auth/login', async (c) => {
   if (!user || Number(user.is_disabled)) {
     return errorResponse('账号或密码错误', 401);
   }
+  // 封号检查（临时封禁未到期 / 永久封禁）
+  if (user.banned_until === 'permanent' || (user.banned_until && new Date(user.banned_until).getTime() > Date.now())) {
+    return errorResponse('账号已被封禁，暂时无法登录', 403);
+  }
+  // 临时封禁已到期，自动解封
+  if (user.banned_until && user.banned_until !== 'permanent') {
+    await c.env.DB.prepare(
+      `UPDATE users SET is_disabled = 0, banned_until = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+    ).bind(user.id).run();
+    user.is_disabled = 0;
+  }
 
   const valid = await verifyPassword(password, user.password_hash, user.password_salt);
   if (!valid) {
@@ -198,7 +213,8 @@ app.use('/api/*', authMiddleware);
 app.get('/api/auth/session', async (c) => {
   const session = c.get('session');
   const user = await c.env.DB.prepare(
-    `SELECT display_name, avatar_key, chat_id, is_disabled
+    `SELECT display_name, avatar_key, chat_id, is_disabled, banned_until,
+            signature, gender, birthdate, is_new_user
      FROM users
      WHERE id = ?
        AND deleted_at IS NULL
@@ -211,12 +227,21 @@ app.get('/api/auth/session', async (c) => {
     await deleteSession(c.env, session.token);
     return errorResponse('账号已不可用', 401);
   }
+  if (user.results[0].banned_until === 'permanent' ||
+      (user.results[0].banned_until && new Date(user.results[0].banned_until).getTime() > Date.now())) {
+    await deleteSession(c.env, session.token);
+    return errorResponse('账号已被封禁', 403);
+  }
 
   const freshSession = {
     ...session,
     displayName: user.results[0].display_name,
     chatId: user.results[0].chat_id || '',
-    avatarUrl: user.results[0].avatar_key ? `/files/${encodeURIComponent(user.results[0].avatar_key)}` : ''
+    avatarUrl: user.results[0].avatar_key ? `/files/${encodeURIComponent(user.results[0].avatar_key)}` : '',
+    signature: user.results[0].signature || '',
+    gender: user.results[0].gender || 'secret',
+    birthdate: user.results[0].birthdate || '',
+    isNewUser: Boolean(Number(user.results[0].is_new_user))
   };
   await putSession(c.env, freshSession);
 
@@ -292,21 +317,35 @@ app.patch('/api/me/profile', async (c) => {
     return errorResponse('显示名称不能为空');
   }
 
+  const signature = payload.signature === undefined ? undefined : String(payload.signature || '').trim().slice(0, 100);
+  let gender = undefined;
+  if (payload.gender !== undefined) {
+    const g = String(payload.gender || 'secret');
+    gender = ['male', 'female', 'secret'].includes(g) ? g : 'secret';
+  }
+  const birthdate = payload.birthdate === undefined ? undefined : String(payload.birthdate || '').trim().slice(0, 20);
+
+  const sets = ['display_name = ?', 'avatar_key = COALESCE(?, avatar_key)', 'updated_at = CURRENT_TIMESTAMP'];
+  const binds = [displayName, avatarKey];
+  if (signature !== undefined) { sets.push('signature = ?'); binds.push(signature); }
+  if (gender !== undefined) { sets.push('gender = ?'); binds.push(gender); }
+  if (birthdate !== undefined) { sets.push('birthdate = ?'); binds.push(birthdate); }
+  binds.push(session.userId);
+
   await c.env.DB.prepare(
-    `UPDATE users
-     SET display_name = ?,
-         avatar_key = COALESCE(?, avatar_key),
-         updated_at = CURRENT_TIMESTAMP
-     WHERE id = ?`
+    `UPDATE users SET ${sets.join(', ')} WHERE id = ?`
   )
-    .bind(displayName, avatarKey, session.userId)
+    .bind(...binds)
     .run();
 
   const nextSession = await getSession(c.env, session.token);
   const merged = {
     ...nextSession,
     displayName,
-    avatarUrl: avatarKey ? `/files/${encodeURIComponent(avatarKey)}` : nextSession.avatarUrl
+    avatarUrl: avatarKey ? `/files/${encodeURIComponent(avatarKey)}` : nextSession.avatarUrl,
+    ...(signature !== undefined ? { signature } : {}),
+    ...(gender !== undefined ? { gender } : {}),
+    ...(birthdate !== undefined ? { birthdate } : {})
   };
   await putSession(c.env, merged);
 
@@ -507,6 +546,7 @@ app.use('/api/admin/*', adminMiddleware);
 
 registerMessageRoutes(app);
 registerSocialRoutes(app);
+registerExtraRoutes(app);
 registerMomentRoutes(app);
 registerDmRoutes(app);
 registerUploadRoutes(app);

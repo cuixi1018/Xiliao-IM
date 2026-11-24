@@ -8,6 +8,18 @@ import {
 import { ApiError } from '../errors.js';
 import { errorResponse, parseJsonRequest, publicFileUrl } from '../utils.js';
 import { areFriends } from './social.js';
+import { insertMessage } from '../db.js';
+
+// 在群内写入"XXX 加入了群聊"系统提示
+async function announceJoin(db, channelId, actorId, addedNames) {
+  if (!addedNames.length) return;
+  const content = `「${addedNames.join('、')}」加入了群聊`;
+  try {
+    await insertMessage(db, { channelId, senderId: actorId, content, kind: 'system' });
+  } catch {
+    // 系统消息写入失败不影响主流程
+  }
+}
 
 function mapChannelRow(row) {
   return {
@@ -264,7 +276,6 @@ export function registerChannelRoutes(app) {
     }
 
     const membership = await getChannelMembership(c.env.DB, channelId, session.userId);
-    const members = await listChannelMembers(c.env.DB, channelId);
     return c.json({
       room: {
         id: Number(channel.id),
@@ -274,9 +285,11 @@ export function registerChannelRoutes(app) {
         avatarUrl: channel.avatar_key ? publicFileUrl(channel.avatar_key) : '',
         kind: channel.kind,
         myRole: membership?.role || '',
-        canManage: session.isAdmin || membership?.role === 'owner'
+        canManage: session.isAdmin || membership?.role === 'owner',
+        announcement: channel.announcement || '',
+        announcementAt: channel.announcement_at || null
       },
-      members
+      members: await listChannelMembers(c.env.DB, channelId, session.userId)
     });
   });
 
@@ -364,6 +377,13 @@ export function registerChannelRoutes(app) {
       return errorResponse('只能邀请你的好友入群，请先添加对方为好友');
     }
 
+    // 计算本次真正新增的成员（排除已在群内的）
+    const existing = await c.env.DB.prepare(
+      `SELECT user_id FROM channel_members WHERE channel_id = ?`
+    ).bind(channelId).all();
+    const existingIds = new Set(existing.results.map((r) => Number(r.user_id)));
+    const newlyAdded = validInvitees.filter((id) => !existingIds.has(id));
+
     const statements = validInvitees.map((userId) =>
       c.env.DB
         .prepare(
@@ -374,9 +394,16 @@ export function registerChannelRoutes(app) {
     );
     await c.env.DB.batch(statements);
 
+    if (newlyAdded.length) {
+      const names = await c.env.DB.prepare(
+        `SELECT display_name FROM users WHERE id IN (${newlyAdded.map(() => '?').join(',')})`
+      ).bind(...newlyAdded).all();
+      await announceJoin(c.env.DB, channelId, session.userId, names.results.map((r) => r.display_name));
+    }
+
     return c.json({
       ok: true,
-      members: await listChannelMembers(c.env.DB, channelId)
+      members: await listChannelMembers(c.env.DB, channelId, session.userId)
     });
   });
 
@@ -408,7 +435,7 @@ export function registerChannelRoutes(app) {
 
     return c.json({
       ok: true,
-      members: await listChannelMembers(c.env.DB, channelId)
+      members: await listChannelMembers(c.env.DB, channelId, session.userId)
     });
   });
 

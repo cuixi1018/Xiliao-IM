@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import api from '../api.js';
 import store from '../store.js';
 import UiAvatar from '../components/ui/Avatar.vue';
+import QRCode from 'qrcode';
 
 const router = useRouter();
 const session = computed(() => store.session);
@@ -11,6 +12,9 @@ const showAdminEntry = computed(() => Boolean(session.value?.isAdmin));
 
 const profileForm = reactive({
   displayName: session.value?.displayName || '',
+  signature: session.value?.signature || '',
+  gender: session.value?.gender || 'secret',
+  birthdate: session.value?.birthdate || '',
   customBackground: localStorage.getItem('customBackground') || ''
 });
 const passwordForm = reactive({
@@ -26,6 +30,53 @@ function copyChatId() {
     copied.value = true;
     setTimeout(() => { copied.value = false; }, 2000);
   }).catch(() => {});
+}
+
+// ===== 个人二维码 =====
+const qrOpen = ref(false);
+const qrDataUrl = ref('');
+async function openQr() {
+  const chatId = session.value?.chatId || '';
+  if (!chatId) return;
+  try {
+    qrDataUrl.value = await QRCode.toDataURL(chatId, {
+      width: 480, margin: 2, color: { dark: '#191919ff', light: '#ffffffff' }
+    });
+    qrOpen.value = true;
+  } catch { error.value = '二维码生成失败'; }
+}
+function saveQr() {
+  if (!qrDataUrl.value) return;
+  const a = document.createElement('a');
+  a.href = qrDataUrl.value;
+  a.download = `细聊-${session.value?.chatId || 'qr'}.png`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// ===== 修改细聊号 =====
+const chatIdForm = reactive({ value: '' });
+const changingChatId = ref(false);
+const showChatIdDialog = ref(false);
+function openChangeChatId() {
+  chatIdForm.value = session.value?.chatId || '';
+  showChatIdDialog.value = true;
+}
+async function changeChatId() {
+  changingChatId.value = true;
+  clearMessage();
+  try {
+    const data = await api.updateChatId(chatIdForm.value.trim().toLowerCase());
+    const next = await api.session();
+    store.setSession(next.session);
+    showChatIdDialog.value = false;
+    info.value = '细聊号已修改';
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    changingChatId.value = false;
+  }
 }
 
 const info = ref('');
@@ -304,14 +355,32 @@ async function changePassword() {
             <span>我的细聊号</span>
             <strong>{{ session?.chatId || '—' }}</strong>
             <button type="button" @click="copyChatId">{{ copied ? '已复制' : '复制' }}</button>
+            <button type="button" @click="openQr">二维码</button>
+            <button type="button" @click="openChangeChatId">修改</button>
           </div>
           <label class="field-compact">
-            <span>显示名称</span>
+            <span>显示名称（昵称）</span>
             <input
               v-model.trim="profileForm.displayName"
               placeholder="将展示给其他用户"
               autocomplete="nickname"
             />
+          </label>
+          <label class="field-compact">
+            <span>个性签名</span>
+            <input v-model.trim="profileForm.signature" placeholder="一句话介绍自己" maxlength="100" />
+          </label>
+          <label class="field-compact">
+            <span>性别</span>
+            <select v-model="profileForm.gender" class="field-select">
+              <option value="secret">保密</option>
+              <option value="male">男</option>
+              <option value="female">女</option>
+            </select>
+          </label>
+          <label class="field-compact">
+            <span>出生年月</span>
+            <input v-model.trim="profileForm.birthdate" placeholder="如 2000-05 或 2000-05-20" />
           </label>
           <label class="field-compact">
             <span>自定义背景</span>
@@ -410,6 +479,37 @@ async function changePassword() {
           <div class="crop-actions">
             <button type="button" class="crop-cancel" @click="cancelCrop">取消</button>
             <button type="button" class="crop-confirm" @click="confirmCrop">确认裁剪</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 个人二维码弹窗 -->
+    <Transition name="modal-fade">
+      <div v-if="qrOpen" class="sp-overlay" @click.self="qrOpen = false">
+        <div class="sp-dialog">
+          <h3>我的二维码</h3>
+          <p class="sp-sub">让别人扫描此二维码，即可查看并添加你为好友</p>
+          <img v-if="qrDataUrl" :src="qrDataUrl" alt="我的细聊二维码" class="qr-image" />
+          <p class="qr-id">{{ session?.chatId }}</p>
+          <div class="sp-actions">
+            <button type="button" class="sp-btn" @click="qrOpen = false">关闭</button>
+            <button type="button" class="sp-btn primary" @click="saveQr">保存二维码</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 修改细聊号弹窗 -->
+    <Transition name="modal-fade">
+      <div v-if="showChatIdDialog" class="sp-overlay" @click.self="showChatIdDialog = false">
+        <div class="sp-dialog">
+          <h3>修改细聊号</h3>
+          <p class="sp-sub">格式：前缀#后缀（如 xiliao#8f3a），全局唯一。修改后别人需用新号添加你。</p>
+          <input v-model="chatIdForm.value" class="sp-input" placeholder="前缀#后缀" />
+          <div class="sp-actions">
+            <button type="button" class="sp-btn" @click="showChatIdDialog = false">取消</button>
+            <button type="button" class="sp-btn primary" :disabled="changingChatId" @click="changeChatId">保存</button>
           </div>
         </div>
       </div>
@@ -955,4 +1055,16 @@ async function changePassword() {
 .settings-header__left h1, .settings-section h2 { color: #191919; }
 .save-btn, .crop-confirm { background: #07c160; box-shadow: 0 2px 8px rgba(7,193,96,0.2); }
 .save-btn:hover:not(:disabled), .crop-confirm:hover { background: #06ad56; }
+.field-select { width: 100%; padding: 10px 12px; border: 1px solid var(--border, #d8dee4); border-radius: 8px; font-size: 14px; background: #fff; box-sizing: border-box; }
+.sp-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.sp-dialog { width: 360px; max-width: 92vw; background: #fff; border-radius: 14px; padding: 22px; text-align: center; }
+.sp-dialog h3 { margin: 0 0 6px; font-size: 17px; color: #191919; }
+.sp-sub { margin: 0 0 14px; font-size: 12px; color: #888; line-height: 1.5; }
+.qr-image { width: 240px; height: 240px; image-rendering: pixelated; }
+.qr-id { font-size: 13px; color: #07c160; font-weight: 600; margin: 8px 0 0; }
+.sp-input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; }
+.sp-input:focus { border-color: #07c160; }
+.sp-actions { display: flex; gap: 8px; margin-top: 18px; justify-content: center; }
+.sp-btn { padding: 9px 20px; border: 1px solid #ddd; border-radius: 8px; background: #fff; color: #555; font-size: 13px; cursor: pointer; }
+.sp-btn.primary { background: #07c160; border-color: #07c160; color: #fff; }
 </style>

@@ -12,6 +12,12 @@ CREATE TABLE IF NOT EXISTS users (
   is_admin INTEGER NOT NULL DEFAULT 0,
   session_version INTEGER NOT NULL DEFAULT 0,
   chat_id TEXT,
+  signature TEXT NOT NULL DEFAULT '',
+  gender TEXT NOT NULL DEFAULT 'secret',
+  birthdate TEXT NOT NULL DEFAULT '',
+  is_new_user INTEGER NOT NULL DEFAULT 1,
+  banned_until TEXT,
+  friend_verify_required INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TEXT
@@ -24,6 +30,8 @@ CREATE TABLE IF NOT EXISTS channels (
   avatar_key TEXT,
   kind TEXT NOT NULL CHECK (kind IN ('public', 'private', 'dm')),
   dm_key TEXT UNIQUE,
+  announcement TEXT NOT NULL DEFAULT '',
+  announcement_at TEXT,
   created_by INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TEXT,
@@ -52,6 +60,10 @@ CREATE TABLE IF NOT EXISTS messages (
   attachment_type TEXT,
   attachment_size INTEGER,
   attachment_duration INTEGER,
+  kind TEXT NOT NULL DEFAULT 'user',
+  quote_id INTEGER,
+  quote_snapshot TEXT NOT NULL DEFAULT '',
+  revoked_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TEXT,
   FOREIGN KEY (channel_id) REFERENCES channels(id),
@@ -74,6 +86,7 @@ CREATE TABLE IF NOT EXISTS friendships (
   addressee_id INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted')),
   note TEXT NOT NULL DEFAULT '',
+  remark TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (requester_id, addressee_id),
@@ -157,6 +170,26 @@ CREATE TABLE IF NOT EXISTS moment_comments (
   FOREIGN KEY (reply_to_user_id) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS message_delete_points (
+  message_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (message_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS complaints (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  reporter_id INTEGER NOT NULL,
+  target_id INTEGER NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  detail TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'handled', 'ignored')),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (reporter_id) REFERENCES users(id),
+  FOREIGN KEY (target_id) REFERENCES users(id)
+);
+
 CREATE TABLE IF NOT EXISTS pending_r2_delete (
   object_key TEXT PRIMARY KEY,
   retry_count INTEGER NOT NULL DEFAULT 0,
@@ -174,6 +207,15 @@ VALUES ('site_icon_url', '');
 
 INSERT OR IGNORE INTO site_settings (setting_key, setting_value)
 VALUES ('allow_registration', '0');
+
+INSERT OR IGNORE INTO site_settings (setting_key, setting_value)
+VALUES ('auto_delete_large_files', '0');
+
+INSERT OR IGNORE INTO site_settings (setting_key, setting_value)
+VALUES ('large_file_threshold', '10485760');
+
+INSERT OR IGNORE INTO site_settings (setting_key, setting_value)
+VALUES ('official_team_channel_id', '');
 
 CREATE INDEX IF NOT EXISTS idx_messages_channel_created
   ON messages(channel_id, id DESC);
@@ -216,3 +258,9 @@ CREATE INDEX IF NOT EXISTS idx_registration_invites_active
 
 CREATE INDEX IF NOT EXISTS idx_pending_r2_delete_next_retry
   ON pending_r2_delete(next_retry_at, retry_count);
+
+CREATE INDEX IF NOT EXISTS idx_complaints_status
+  ON complaints(status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_complaints_target
+  ON complaints(target_id);

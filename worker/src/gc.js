@@ -531,6 +531,52 @@ async function runHardDeleteUsersStep(env, config, summary) {
   }
 }
 
+async function runLargeFileCleanupStep(env, config, summary) {
+  const enabled = await env.DB.prepare(
+    `SELECT setting_value FROM site_settings WHERE setting_key = 'auto_delete_large_files' LIMIT 1`
+  ).all();
+  const thresholdRow = await env.DB.prepare(
+    `SELECT setting_value FROM site_settings WHERE setting_key = 'large_file_threshold' LIMIT 1`
+  ).all();
+  const isEnabled = String(enabled.results[0]?.setting_value || '0') === '1';
+  if (!isEnabled) return;
+
+  const threshold = toPositiveInteger(thresholdRow.results[0]?.setting_value, 10485760);
+  let batches = 0;
+  while (batches < config.maxBatchesPerRun) {
+    const { results } = await env.DB.prepare(
+      `SELECT id, attachment_key
+       FROM messages
+       WHERE deleted_at IS NULL
+         AND attachment_key IS NOT NULL
+         AND attachment_key != ''
+         AND attachment_size >= ?
+         AND created_at < datetime('now', '-10 day')
+       ORDER BY id ASC
+       LIMIT ?`
+    )
+      .bind(threshold, config.batchSize)
+      .all();
+    if (!results.length) break;
+    batches += 1;
+
+    const ids = results.map((r) => Number(r.id));
+    const keys = results.map((r) => r.attachment_key);
+
+    // 清空消息里的附件引用（消息文本保留）
+    await env.DB.prepare(
+      `UPDATE messages
+       SET attachment_key = NULL, attachment_name = NULL, attachment_type = NULL,
+           attachment_size = NULL, attachment_duration = NULL
+       WHERE id IN (${placeholders(ids.length)})`
+    ).bind(...ids).run();
+
+    await processR2CandidateKeys(env, env.DB, keys, summary);
+
+    if (results.length < config.batchSize) break;
+  }
+}
+
 export async function runScheduledGc(env) {
   const config = getGcConfig(env);
   const summary = createSummary();
@@ -538,6 +584,7 @@ export async function runScheduledGc(env) {
 
   await runRetryQueueStep(env, config, summary);
   await runExpiredMessagesStep(env, config, summary);
+  await runLargeFileCleanupStep(env, config, summary);
   await runHardDeleteInvitesStep(env, config, summary);
   await runHardDeleteChannelsStep(env, config, summary);
   await runHardDeleteUsersStep(env, config, summary);

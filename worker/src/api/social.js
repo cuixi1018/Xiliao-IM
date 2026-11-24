@@ -1,5 +1,21 @@
 import { errorResponse, parseJsonRequest } from '../utils.js';
-import { requireAccessibleRoom } from '../db.js';
+import { insertMessage, requireAccessibleRoom } from '../db.js';
+import { ensureDmChannel } from '../db.js';
+
+// 好友通过后，向双方私信会话写入一条默认破冰消息
+async function sendFriendWelcomeMessage(db, actorId, targetId, actorName) {
+  try {
+    const dm = await ensureDmChannel(db, actorId, targetId);
+    await insertMessage(db, {
+      channelId: Number(dm.id),
+      senderId: actorId,
+      content: '我通过了你的验证，可以聊天了',
+      kind: 'system'
+    });
+  } catch {
+    // 默认消息失败不影响主流程
+  }
+}
 
 function mapUserRow(row) {
   return {
@@ -7,7 +23,9 @@ function mapUserRow(row) {
     username: row.username,
     displayName: row.display_name,
     chatId: row.chat_id || '',
-    avatarUrl: row.avatar_key ? `/files/${encodeURIComponent(row.avatar_key)}` : ''
+    avatarUrl: row.avatar_key ? `/files/${encodeURIComponent(row.avatar_key)}` : '',
+    signature: row.signature || '',
+    friendVerifyRequired: row.friend_verify_required === undefined ? true : Boolean(Number(row.friend_verify_required))
   };
 }
 
@@ -101,7 +119,7 @@ export function registerSocialRoutes(app) {
     // 精确按细聊号，或前缀匹配用户名/昵称/细聊号
     const like = `%${keyword.replace(/[\\%_]/g, '\\$&')}%`;
     const { results } = await c.env.DB.prepare(
-      `SELECT id, username, display_name, chat_id, avatar_key
+      `SELECT id, username, display_name, chat_id, avatar_key, signature, friend_verify_required
        FROM users
        WHERE deleted_at IS NULL
          AND is_disabled = 0
@@ -147,14 +165,14 @@ export function registerSocialRoutes(app) {
     let targetRow = null;
     if (Number.isFinite(targetId) && targetId) {
       const { results } = await c.env.DB.prepare(
-        `SELECT id FROM users WHERE id = ? AND deleted_at IS NULL AND is_disabled = 0 LIMIT 1`
+        `SELECT id, friend_verify_required FROM users WHERE id = ? AND deleted_at IS NULL AND is_disabled = 0 LIMIT 1`
       )
         .bind(targetId)
         .all();
       targetRow = results[0] || null;
     } else if (payload.chatId) {
       const { results } = await c.env.DB.prepare(
-        `SELECT id FROM users WHERE chat_id = ? AND deleted_at IS NULL AND is_disabled = 0 LIMIT 1`
+        `SELECT id, friend_verify_required FROM users WHERE chat_id = ? AND deleted_at IS NULL AND is_disabled = 0 LIMIT 1`
       )
         .bind(String(payload.chatId).trim())
         .all();
@@ -171,6 +189,18 @@ export function registerSocialRoutes(app) {
     }
     if (await areFriends(c.env.DB, session.userId, targetUserId)) {
       return errorResponse('你们已经是好友了');
+    }
+
+    // 对方未开启好友验证 → 直接成为好友并发送默认消息
+    if (!Number(targetRow.friend_verify_required)) {
+      await c.env.DB.prepare(
+        `INSERT OR IGNORE INTO friendships (requester_id, addressee_id, status, note)
+         VALUES (?, ?, 'accepted', ?)`
+      )
+        .bind(session.userId, targetUserId, note)
+        .run();
+      await sendFriendWelcomeMessage(c.env.DB, session.userId, targetUserId, session.displayName);
+      return c.json({ ok: true, accepted: true, direct: true });
     }
 
     // 若对方已申请过我，则直接互相通过
@@ -217,7 +247,7 @@ export function registerSocialRoutes(app) {
     }
 
     const { results } = await c.env.DB.prepare(
-      `SELECT id, addressee_id, status FROM friendships WHERE id = ? LIMIT 1`
+      `SELECT id, requester_id, addressee_id, status, created_at FROM friendships WHERE id = ? LIMIT 1`
     )
       .bind(requestId)
       .all();
@@ -226,12 +256,21 @@ export function registerSocialRoutes(app) {
       return errorResponse('申请不存在或已处理', 404);
     }
 
+    // 申请有效期 2 天，超时自动作废
+    const ageMs = Date.now() - new Date(String(req.created_at).replace(' ', 'T') + 'Z').getTime();
+    if (ageMs > 2 * 24 * 3600 * 1000) {
+      await c.env.DB.prepare(`DELETE FROM friendships WHERE id = ?`).bind(requestId).run();
+      return errorResponse('该申请已超过 2 天有效期，已自动失效', 400);
+    }
+
     if (accept) {
       await c.env.DB.prepare(
         `UPDATE friendships SET status = 'accepted', updated_at = CURRENT_TIMESTAMP WHERE id = ?`
       )
         .bind(requestId)
         .run();
+      // 通过验证后发送默认消息到私信
+      await sendFriendWelcomeMessage(c.env.DB, session.userId, Number(req.requester_id), session.displayName);
     } else {
       await c.env.DB.prepare(`DELETE FROM friendships WHERE id = ?`).bind(requestId).run();
     }

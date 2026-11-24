@@ -30,10 +30,11 @@ const {
 const showCollapsed = ref(false);
 
 const {
-  messages, loading, wsStatus, composerText, pendingAttachment, sending,
+  messages, loading, wsStatus, composerText, composerQuote, pendingAttachment, sending,
   messagesEl, fileInputEl, formatTime, isOwnMessage, bubbleRowClass, bubbleClass,
   loadMessages, connectSocket, disconnectSocket, sendMessage, handleComposerKeydown,
-  openFilePicker, uploadAttachment, clearAttachment, loadOlder
+  openFilePicker, uploadAttachment, clearAttachment, loadOlder,
+  recallLocally, removeLocally
 } = useChatRoom({
   activeRoom, channels, users, session, error, refreshSidebar,
   markConversationRead, applyConversationActivity, canManageActiveRoom,
@@ -94,6 +95,210 @@ async function selectConversation(item) {
 
 function logout() { store.logout(); router.push('/login'); }
 function openAdmin() { router.push('/admin'); }
+
+// ===== 消息操作菜单（右键 / 长按触发）=====
+const msgMenu = reactive({ show: false, x: 0, y: 0, message: null });
+let longPressTimer = null;
+
+function canRecall(msg) {
+  if (!isOwnMessage(msg) || msg.revokedAt) return false;
+  const t = new Date(String(msg.createdAt).replace(' ', 'T') + (String(msg.createdAt).includes('Z') || String(msg.createdAt).includes('+') ? '' : 'Z')).getTime();
+  return Date.now() - t <= 2 * 60 * 1000;
+}
+function canDelete(msg) {
+  return isOwnMessage(msg) && !msg.revokedAt;
+}
+function canForward(msg) {
+  // 语音消息不支持转发
+  if (!msg || msg.revokedAt) return false;
+  const att = msg.attachment;
+  if (att && String(att.type || '').startsWith('audio/')) return false;
+  return true;
+}
+function openMsgMenu(msg, event) {
+  if (msg.kind === 'system') return;
+  event.preventDefault();
+  msgMenu.message = msg;
+  msgMenu.x = event.clientX || 0;
+  msgMenu.y = event.clientY || 0;
+  // 防止菜单超出视口
+  if (msgMenu.x > window.innerWidth - 190) msgMenu.x = window.innerWidth - 190;
+  if (msgMenu.y > window.innerHeight - 220) msgMenu.y = window.innerHeight - 220;
+  msgMenu.show = true;
+}
+function startLongPress(msg, event) {
+  const touch = event.touches?.[0] || event;
+  const x = touch.clientX, y = touch.clientY;
+  longPressTimer = setTimeout(() => {
+    openMsgMenu(msg, { preventDefault() {}, clientX: x, clientY: y });
+  }, 550);
+}
+function cancelLongPress() {
+  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+}
+function closeMsgMenu() { msgMenu.show = false; msgMenu.message = null; }
+
+async function doRecall() {
+  const msg = msgMenu.message;
+  closeMsgMenu();
+  if (!msg) return;
+  try {
+    await api.recallMessage(msg.id);
+    recallLocally(msg.id);
+  } catch (e) { error.value = e.message; }
+}
+async function doDeleteMsg() {
+  const msg = msgMenu.message;
+  closeMsgMenu();
+  if (!msg) return;
+  if (!window.confirm('确定删除这条消息吗？仅对你自己生效。')) return;
+  try {
+    await api.deleteMessage(msg.id);
+    removeLocally(msg.id);
+  } catch (e) { error.value = e.message; }
+}
+function doQuote() {
+  const msg = msgMenu.message;
+  closeMsgMenu();
+  if (!msg) return;
+  const preview = msg.content || (msg.attachment ? (msg.attachment.name || '[附件]') : '[消息]');
+  composerQuote.value = { id: msg.id, senderName: msg.sender.displayName, preview };
+}
+function cancelQuote() { composerQuote.value = null; }
+
+// 转发弹窗
+const forwardOpen = ref(false);
+const forwardMsg = ref(null);
+const forwardRooms = ref([]);
+const forwardLoading = ref(false);
+function openForward() {
+  const msg = msgMenu.message;
+  closeMsgMenu();
+  if (!msg || !canForward(msg)) return;
+  forwardMsg.value = msg;
+  forwardRooms.value = conversationItems.value.slice();
+  forwardOpen.value = true;
+}
+async function doForward(room) {
+  if (!forwardMsg.value) return;
+  forwardLoading.value = true;
+  try {
+    await api.forwardMessage(forwardMsg.value.id, room.kind, room.id);
+    forwardOpen.value = false;
+    forwardMsg.value = null;
+    error.value = '';
+  } catch (e) { error.value = e.message; }
+  finally { forwardLoading.value = false; }
+}
+
+// ===== 全局搜索弹窗 =====
+const searchOpen = ref(false);
+const searchQuery = ref('');
+const searchResults = ref({ users: [], messages: [] });
+const searching = ref(false);
+async function doGlobalSearch() {
+  const q = searchQuery.value.trim();
+  if (!q) { searchResults.value = { users: [], messages: [] }; return; }
+  searching.value = true;
+  try {
+    searchResults.value = await api.globalSearch(q);
+  } catch (e) { error.value = e.message; }
+  finally { searching.value = false; }
+}
+function jumpToSearchMessage(m) {
+  const item = conversationItems.value.find(c => c.id === m.room.id && c.kind === m.room.kind);
+  searchOpen.value = false;
+  if (item) {
+    selectConversation(item);
+  }
+}
+function addFromSearch(user) {
+  sessionStorage.setItem('searchAddUser', JSON.stringify(user));
+  searchOpen.value = false;
+  router.push('/contacts');
+}
+
+// ===== 初次注册欢迎弹窗 =====
+const showWelcome = ref(false);
+const welcomeText = computed(() => `欢迎来到细聊，${session.value?.displayName || ''}！\n\n你已自动加入「细聊团队」官方群（细聊号 xlofficial），公告与新功能会第一时间发布。\n\n你的细聊号是 ${session.value?.chatId || ''}，别人可以用它搜索并添加你为好友。`);
+async function checkWelcome() {
+  if (session.value?.isNewUser) {
+    showWelcome.value = true;
+    try { await api.markWelcomeSeen(); } catch { /* ignore */ }
+  }
+}
+
+// ===== 群管理弹窗 =====
+const groupManageOpen = ref(false);
+const groupManageLoading = ref(false);
+const groupManage = reactive({ name: '', announcement: '', members: [], allFriends: [], addUserId: '' });
+function canManageGroup() {
+  return activeRoom.value && activeRoom.value.kind !== 'dm' && canManageActiveRoom.value;
+}
+function openGroupManage() {
+  showMoreMenu.value = false;
+  if (!canManageGroup()) return;
+  groupManageOpen.value = true;
+  reloadGroupManage();
+}
+async function reloadGroupManage() {
+  groupManageLoading.value = true;
+  try {
+    const [roomData, friendsData] = await Promise.all([
+      api.getChannelMembers(activeRoom.value.id),
+      api.getFriends()
+    ]);
+    groupManage.name = roomData.room?.name || '';
+    groupManage.announcement = roomData.room?.announcement || '';
+    groupManage.members = roomData.members || [];
+    groupManage.allFriends = friendsData.friends || [];
+  } catch (e) { error.value = e.message; }
+  finally { groupManageLoading.value = false; }
+}
+async function saveGroupName() {
+  if (!groupManage.name.trim()) return;
+  try {
+    await api.updateChannel(activeRoom.value.id, { name: groupManage.name.trim() });
+    activeRoom.value.name = groupManage.name.trim();
+    error.value = '';
+  } catch (e) { error.value = e.message; }
+}
+async function saveAnnouncement() {
+  try {
+    await api.setChannelAnnouncement(activeRoom.value.id, groupManage.announcement);
+    error.value = '';
+  } catch (e) { error.value = e.message; }
+}
+async function addGroupMember() {
+  const uid = Number(groupManage.addUserId);
+  if (!uid) return;
+  try {
+    await api.inviteChannelMembers(activeRoom.value.id, [uid]);
+    groupManage.addUserId = '';
+    await reloadGroupManage();
+    await refreshSidebar();
+    error.value = '';
+  } catch (e) { error.value = e.message; }
+}
+async function kickMember(member) {
+  if (!window.confirm(`确定将「${member.displayInGroup || member.displayName}」移出群聊吗？`)) return;
+  try {
+    await api.removeChannelMember(activeRoom.value.id, member.id);
+    await reloadGroupManage();
+    await refreshSidebar();
+    error.value = '';
+  } catch (e) { error.value = e.message; }
+}
+async function dissolveGroup() {
+  if (!window.confirm('确定解散该群聊吗？此操作不可恢复。')) return;
+  try {
+    await api.deleteOwnedChannel(activeRoom.value.id);
+    groupManageOpen.value = false;
+    activeRoom.value = null;
+    await refreshSidebar();
+    error.value = '';
+  } catch (e) { error.value = e.message; }
+}
 
 // 更多操作菜单
 const showMoreMenu = ref(false);
@@ -234,6 +439,7 @@ watch(activeRoomKey, async (k) => {
 });
 onMounted(() => {
   void bootstrap().then(connectUnreadInbox);
+  checkWelcome();
 });
 function formatBubbleTime(value) {
   if (!value) return '';
@@ -259,6 +465,9 @@ onBeforeUnmount(() => {
       <div class="sidebar-inner">
         <div class="sidebar-header">
           <h1 class="brand-title">Xiliao</h1>
+          <button type="button" class="header-action" @click="searchOpen = !searchOpen" title="搜索">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
           <button type="button" class="header-action" @click="openCreateGroup" title="创建群聊">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
               <title>创建群聊</title>
@@ -266,6 +475,31 @@ onBeforeUnmount(() => {
               <line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>
             </svg>
           </button>
+        </div>
+
+        <div v-if="searchOpen" class="global-search-box">
+          <div class="gs-input-row">
+            <input v-model="searchQuery" placeholder="搜索聊天记录 / 细聊号加好友" @keyup.enter="doGlobalSearch" />
+            <button type="button" @click="doGlobalSearch">{{ searching ? '...' : '搜索' }}</button>
+          </div>
+          <div class="gs-results">
+            <template v-if="searchResults.users?.length">
+              <div class="gs-section-title">用户</div>
+              <button v-for="u in searchResults.users" :key="'u'+u.id" type="button" class="gs-row" @click="addFromSearch(u)">
+                <UiAvatar :src="u.avatarUrl" :fallback="u.displayName?.[0] || '?'" size="sm" />
+                <span class="gs-row-name">{{ u.displayName }}</span>
+                <span class="gs-row-sub">{{ u.chatId }}</span>
+              </button>
+            </template>
+            <template v-if="searchResults.messages?.length">
+              <div class="gs-section-title">聊天记录</div>
+              <button v-for="m in searchResults.messages" :key="'m'+m.id" type="button" class="gs-row gs-row--msg" @click="jumpToSearchMessage(m)">
+                <span class="gs-row-name">{{ m.senderName }} · {{ m.room.name }}</span>
+                <span class="gs-row-sub">{{ m.content || m.attachmentName }}</span>
+              </button>
+            </template>
+            <p v-if="searchQuery && !searching && !searchResults.users?.length && !searchResults.messages?.length" class="gs-empty">没有找到结果</p>
+          </div>
         </div>
 
         <div class="sidebar-divider"></div>
@@ -329,6 +563,7 @@ onBeforeUnmount(() => {
           <div class="chat-header__status" :class="wsConnected ? 'online' : 'offline'"></div>
           <button type="button" class="chat-header__more" title="更多" @click="showMoreMenu = !showMoreMenu">⋯</button>
           <div v-if="showMoreMenu" class="more-menu">
+            <button v-if="canManageGroup()" type="button" @click="openGroupManage">群管理</button>
             <button v-if="activeRoom.kind !== 'dm'" type="button" @click="leaveGroup">退出群聊</button>
             <button type="button" @click="clearHistory">清空聊天记录</button>
           </div>
@@ -339,15 +574,27 @@ onBeforeUnmount(() => {
           <div v-if="loading" class="messages-hint">加载中...</div>
           <div v-else-if="!messages.length" class="messages-hint">暂无消息</div>
 
+          <div v-if="msg.kind === 'system'" class="system-message" v-for="msg in messages" :key="'sys-'+msg.id">
+            <span>{{ msg.content }}</span>
+          </div>
           <article
-            v-for="msg in messages" :key="msg.id"
+            v-for="msg in messages.filter(m => m.kind !== 'system')" :key="msg.id"
             class="message-row" :class="{ 'message-row--own': isOwnMessage(msg) }"
+            @contextmenu="openMsgMenu(msg, $event)"
+            @touchstart="startLongPress(msg, $event)"
+            @touchend="cancelLongPress"
+            @touchmove="cancelLongPress"
           >
             <div class="message-bubble" :class="bubbleClass(msg, 0)">
               <div v-if="activeRoom.kind !== 'dm' && !isOwnMessage(msg)" class="message-sender-name">
                 {{ msg.sender.displayName }}
               </div>
+              <div v-if="msg.quote" class="message-quote">
+                <span class="quote-name">{{ msg.quote.senderName }}</span>
+                <span class="quote-preview">{{ msg.quote.preview }}</span>
+              </div>
               <p v-if="msg.content">{{ msg.content }}</p>
+              <p v-else-if="msg.revokedAt" class="revoked-hint">消息已撤回</p>
               <div v-if="msg.attachment && isVoice(msg.attachment)" class="voice-bubble" @click="toggleVoice(msg)">
                 <span class="voice-icon">{{ playingVoice === msg.id ? '⏸' : '▶' }}</span>
                 <span class="voice-wave">🔊 语音 {{ msg.attachment.duration || '?' }}″</span>
@@ -359,6 +606,13 @@ onBeforeUnmount(() => {
         </section>
 
         <footer class="chat-composer">
+          <div v-if="composerQuote" class="quote-bar">
+            <div class="quote-bar-info">
+              <span class="quote-bar-name">回复 {{ composerQuote.senderName }}</span>
+              <span class="quote-bar-preview">{{ composerQuote.preview }}</span>
+            </div>
+            <button type="button" class="quote-bar-close" @click="cancelQuote">✕</button>
+          </div>
           <div v-if="pendingAttachment" class="composer-attachment">
             <PendingAttachmentPreview :attachment="pendingAttachment" @clear="clearAttachment" />
           </div>
@@ -438,6 +692,99 @@ onBeforeUnmount(() => {
             >
               {{ creatingGroup ? '创建中...' : '创建' }}
             </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 消息操作菜单：右键/长按触发 -->
+    <div v-if="msgMenu.show" class="msg-context-menu" :style="{ left: msgMenu.x + 'px', top: msgMenu.y + 'px' }" @click.stop>
+      <button v-if="canRecall(msgMenu.message)" type="button" @click="doRecall">↩️ 撤回</button>
+      <button v-if="canDelete(msgMenu.message)" type="button" class="danger" @click="doDeleteMsg">🗑️ 删除</button>
+      <button type="button" @click="doQuote">💬 引用</button>
+      <button v-if="canForward(msgMenu.message)" type="button" @click="openForward">➡️ 转发</button>
+    </div>
+    <div v-if="msgMenu.show" class="msg-menu-backdrop" @click="closeMsgMenu" @contextmenu.prevent="closeMsgMenu"></div>
+
+    <!-- 转发弹窗 -->
+    <Transition name="modal-fade">
+      <div v-if="forwardOpen" class="modal-overlay" @click.self="forwardOpen = false">
+        <div class="modal-card">
+          <h3>转发到</h3>
+          <div class="forward-list">
+            <button v-for="room in forwardRooms" :key="room.key" type="button" class="forward-row" :disabled="forwardLoading" @click="doForward(room)">
+              <UiAvatar :src="room.avatarUrl" :fallback="room.title?.[0] || '?'" size="sm" />
+              <span>{{ room.title }}</span>
+            </button>
+            <p v-if="!forwardRooms.length" class="hint-text">暂无可转发的会话</p>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" @click="forwardOpen = false">取消</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 群管理弹窗 -->
+    <Transition name="modal-fade">
+      <div v-if="groupManageOpen" class="modal-overlay" @click.self="groupManageOpen = false">
+        <div class="modal-card group-manage-card">
+          <h3>群管理</h3>
+          <div v-if="groupManageLoading" class="hint-text">加载中...</div>
+          <div v-else class="gm-body">
+            <div class="gm-field">
+              <label>群名称</label>
+              <div class="gm-inline">
+                <input v-model="groupManage.name" class="modal-input" />
+                <button type="button" class="btn-secondary" @click="saveGroupName">保存</button>
+              </div>
+            </div>
+            <div class="gm-field">
+              <label>群公告</label>
+              <textarea v-model="groupManage.announcement" rows="3" class="gm-textarea" placeholder="输入群公告，所有成员可见"></textarea>
+              <button type="button" class="btn-secondary" @click="saveAnnouncement">发布公告</button>
+            </div>
+            <div class="gm-field">
+              <label>添加成员（仅限你的好友）</label>
+              <div class="gm-inline">
+                <select v-model="groupManage.addUserId" class="gm-select">
+                  <option value="">选择好友</option>
+                  <option v-for="f in groupManage.allFriends" :key="f.id" :value="f.id">{{ f.displayName }}（{{ f.chatId }}）</option>
+                </select>
+                <button type="button" class="btn-primary" @click="addGroupMember">添加</button>
+              </div>
+            </div>
+            <div class="gm-field">
+              <label>群成员（{{ groupManage.members.length }}）</label>
+              <div class="gm-members">
+                <div v-for="m in groupManage.members" :key="m.id" class="gm-member">
+                  <UiAvatar :src="m.avatarUrl" :fallback="(m.displayInGroup||m.displayName)?.[0] || '?'" size="sm" />
+                  <span class="gm-member-name">{{ m.displayInGroup || m.displayName }}</span>
+                  <span v-if="m.role === 'owner'" class="gm-owner-tag">群主</span>
+                  <button v-else type="button" class="gm-kick" @click="kickMember(m)">移出</button>
+                </div>
+              </div>
+            </div>
+            <div class="gm-field gm-danger-zone">
+              <button type="button" class="btn-danger" @click="dissolveGroup">解散群聊</button>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" @click="groupManageOpen = false">关闭</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 初次注册欢迎弹窗 -->
+    <Transition name="modal-fade">
+      <div v-if="showWelcome" class="modal-overlay" @click.self="showWelcome = false">
+        <div class="modal-card welcome-card">
+          <div class="welcome-logo">🎉</div>
+          <h3>欢迎来到细聊</h3>
+          <p class="welcome-text">{{ welcomeText }}</p>
+          <div class="modal-actions">
+            <button type="button" class="btn-primary" @click="showWelcome = false">开始聊天</button>
           </div>
         </div>
       </div>
@@ -1157,6 +1504,78 @@ onBeforeUnmount(() => {
 .sidebar-item { position: relative; }
 .sidebar-item:hover .fold-btn { opacity: 1; }
 .uncollapse-btn:hover, .fold-btn:hover { background: #e8ecf0; color: #008069; }
+
+/* ===== 消息操作菜单 / 引用 / 系统消息 / 搜索 / 转发 / 欢迎 ===== */
+.msg-menu-backdrop { position: fixed; inset: 0; z-index: 90; }
+.msg-context-menu {
+  position: fixed; z-index: 91; width: 180px; padding: 5px;
+  background: #fff; border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,0.18);
+  display: flex; flex-direction: column;
+}
+.msg-context-menu button {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  border: none; background: transparent; border-radius: 6px; font-size: 14px;
+  color: #191919; cursor: pointer; text-align: left;
+}
+.msg-context-menu button:hover { background: #f2f2f2; }
+.msg-context-menu button.danger { color: #fa5151; }
+.message-quote {
+  display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; margin-bottom: 6px;
+  background: rgba(0,0,0,0.05); border-left: 3px solid #07c160; border-radius: 4px;
+  max-width: 260px;
+}
+.quote-name { font-size: 12px; font-weight: 600; color: #07c160; }
+.quote-preview { font-size: 12px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.revoked-hint { font-size: 13px; color: #aaa; font-style: italic; }
+.system-message { text-align: center; margin: 12px 0; }
+.system-message span {
+  display: inline-block; padding: 5px 12px; background: rgba(0,0,0,0.05);
+  color: #999; font-size: 12px; border-radius: 12px; max-width: 80%;
+}
+.quote-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 12px; background: #f7f7f7; border-radius: 8px 8px 0 0; border-bottom: 1px solid #e5e5e5;
+}
+.quote-bar-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.quote-bar-name { font-size: 12px; font-weight: 600; color: #07c160; }
+.quote-bar-preview { font-size: 12px; color: #999; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quote-bar-close { border: none; background: transparent; color: #999; cursor: pointer; font-size: 14px; }
+.global-search-box { padding: 8px 12px; border-bottom: 1px solid #eee; background: #fafafa; }
+.gs-input-row { display: flex; gap: 6px; }
+.gs-input-row input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; outline: none; }
+.gs-input-row input:focus { border-color: #07c160; }
+.gs-input-row button { padding: 8px 12px; border: none; border-radius: 8px; background: #07c160; color: #fff; font-size: 13px; cursor: pointer; }
+.gs-results { max-height: 320px; overflow-y: auto; margin-top: 8px; }
+.gs-section-title { padding: 6px 4px; font-size: 11px; color: #aaa; }
+.gs-row { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 6px; border: none; background: transparent; cursor: pointer; border-radius: 6px; text-align: left; }
+.gs-row:hover { background: #f0f0f0; }
+.gs-row-name { font-size: 13px; color: #191919; font-weight: 500; }
+.gs-row-sub { font-size: 11px; color: #999; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.gs-row--msg { flex-direction: column; align-items: flex-start; gap: 2px; }
+.gs-row--msg .gs-row-sub { margin-left: 0; max-width: 100%; }
+.gs-empty { padding: 16px 4px; text-align: center; color: #aaa; font-size: 12px; }
+.forward-list { max-height: 320px; overflow-y: auto; margin: 8px 0; }
+.forward-row { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px; border: none; background: transparent; cursor: pointer; border-radius: 8px; font-size: 14px; }
+.forward-row:hover { background: #f2f2f2; }
+.hint-text { padding: 16px; text-align: center; color: #aaa; font-size: 13px; }
+.welcome-card { text-align: center; }
+.welcome-logo { font-size: 48px; margin-bottom: 8px; }
+.welcome-text { white-space: pre-wrap; text-align: left; font-size: 13px; line-height: 1.8; color: #555; background: #f7f7f7; padding: 14px; border-radius: 10px; }
+.group-manage-card { width: 520px; max-width: 92vw; }
+.gm-body { display: flex; flex-direction: column; gap: 16px; margin: 12px 0; max-height: 60vh; overflow-y: auto; }
+.gm-field { display: flex; flex-direction: column; gap: 6px; }
+.gm-field > label { font-size: 12px; font-weight: 600; color: #666; }
+.gm-inline { display: flex; gap: 8px; }
+.gm-inline .modal-input, .gm-inline .gm-select { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; }
+.gm-textarea { padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; resize: vertical; font-family: inherit; }
+.gm-members { max-height: 180px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; }
+.gm-member { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #f4f4f4; }
+.gm-member:last-child { border-bottom: none; }
+.gm-member-name { flex: 1; font-size: 13px; color: #191919; }
+.gm-owner-tag { font-size: 11px; color: #07c160; background: #eaf8ef; padding: 2px 8px; border-radius: 10px; }
+.gm-kick { border: none; background: transparent; color: #fa5151; font-size: 12px; cursor: pointer; }
+.gm-danger-zone { border-top: 1px solid #f0f0f0; padding-top: 12px; }
+.btn-danger { padding: 8px 16px; border: none; border-radius: 8px; background: #fa5151; color: #fff; font-size: 13px; cursor: pointer; }
 
 @media (max-width: 768px) {
   .left-sidebar {

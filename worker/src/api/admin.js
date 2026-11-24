@@ -2,6 +2,7 @@ import { hashPassword } from '../auth.js';
 import { getSiteSettings, listMessages, makeUniqueChatId, requireAccessibleRoom, updateSiteSettings } from '../db.js';
 import { ApiError } from '../errors.js';
 import { errorResponse, parseJsonRequest, randomToken, sanitizeLimit } from '../utils.js';
+import { welcomeNewUser } from '../team.js';
 
 function escapeSqlLike(value) {
   // LIKE 的 %、_ 和转义符本身会改变匹配范围，转义后才能按用户输入字面量搜索。
@@ -118,12 +119,18 @@ export function registerAdminRoutes(app) {
     const siteName = String(payload.siteName || '').trim();
     const siteIconUrl = String(payload.siteIconUrl || '').trim();
     const allowRegistration = Boolean(payload.allowRegistration);
+    const autoDeleteLargeFiles = Boolean(payload.autoDeleteLargeFiles);
+    const largeFileThreshold = payload.largeFileThreshold !== undefined
+      ? Number(payload.largeFileThreshold)
+      : undefined;
 
     if (!siteName) {
       return errorResponse('站点名称不能为空');
     }
 
-    const site = await updateSiteSettings(c.env.DB, { siteName, siteIconUrl, allowRegistration });
+    const site = await updateSiteSettings(c.env.DB, {
+      siteName, siteIconUrl, allowRegistration, autoDeleteLargeFiles, largeFileThreshold
+    });
     return c.json({ site });
   });
 
@@ -216,6 +223,7 @@ export function registerAdminRoutes(app) {
          chat_id,
          avatar_key,
          is_disabled,
+         banned_until,
          created_at
        FROM users
        WHERE deleted_at IS NULL
@@ -230,6 +238,7 @@ export function registerAdminRoutes(app) {
         chatId: row.chat_id || '',
         avatarUrl: row.avatar_key ? `/files/${encodeURIComponent(row.avatar_key)}` : '',
         isDisabled: Boolean(Number(row.is_disabled)),
+        bannedUntil: row.banned_until || null,
         createdAt: row.created_at
       }))
     });
@@ -265,6 +274,8 @@ export function registerAdminRoutes(app) {
         throw error;
       });
 
+    await welcomeNewUser(c.env, Number(result.meta.last_row_id), displayName);
+
     return c.json({
       user: {
         id: result.meta.last_row_id,
@@ -293,6 +304,82 @@ export function registerAdminRoutes(app) {
       .bind(isDisabled, payload.displayName || null, bumpVersion, userId)
       .run();
 
+    return c.json({ ok: true });
+  });
+
+  // 封号（支持时长：hours / 'permanent' / 'unban'）
+  app.put('/api/admin/users/:userId/ban', async (c) => {
+    const userId = Number(c.req.param('userId'));
+    const payload = await parseJsonRequest(c.req.raw);
+    const mode = String(payload.mode || 'permanent');
+    let bannedUntil = 'permanent';
+    let isDisabled = 1;
+
+    if (mode === 'unban') {
+      bannedUntil = null;
+      isDisabled = 0;
+    } else if (mode === 'hours') {
+      const hours = Number(payload.hours);
+      if (!Number.isFinite(hours) || hours <= 0) {
+        return errorResponse('请填写有效的封禁时长（小时）');
+      }
+      bannedUntil = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+      isDisabled = 1;
+    }
+
+    await c.env.DB.prepare(
+      `UPDATE users
+       SET is_disabled = ?, banned_until = ?, session_version = session_version + 1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND deleted_at IS NULL`
+    )
+      .bind(isDisabled, bannedUntil, userId)
+      .run();
+
+    return c.json({ ok: true, bannedUntil, isDisabled: Boolean(isDisabled) });
+  });
+
+  // 投诉列表
+  app.get('/api/admin/complaints', async (c) => {
+    const status = String(c.req.query('status') || 'pending');
+    const { results } = await c.env.DB.prepare(
+      `SELECT
+         cp.id, cp.reason, cp.detail, cp.status, cp.created_at,
+         reporter.id AS reporter_id, reporter.display_name AS reporter_name,
+         target.id AS target_id, target.display_name AS target_name, target.chat_id AS target_chat_id
+       FROM complaints cp
+       JOIN users reporter ON reporter.id = cp.reporter_id
+       JOIN users target ON target.id = cp.target_id
+       WHERE cp.status = ?
+       ORDER BY cp.created_at DESC
+       LIMIT 200`
+    )
+      .bind(status)
+      .all();
+    return c.json({
+      complaints: results.map((row) => ({
+        id: Number(row.id),
+        reason: row.reason,
+        detail: row.detail,
+        status: row.status,
+        createdAt: row.created_at,
+        reporter: { id: Number(row.reporter_id), displayName: row.reporter_name },
+        target: { id: Number(row.target_id), displayName: row.target_name, chatId: row.target_chat_id || '' }
+      }))
+    });
+  });
+
+  // 处理投诉
+  app.patch('/api/admin/complaints/:id', async (c) => {
+    const id = Number(c.req.param('id'));
+    const payload = await parseJsonRequest(c.req.raw);
+    const status = String(payload.status || 'handled');
+    if (!['handled', 'ignored'].includes(status)) {
+      return errorResponse('无效的处理状态');
+    }
+    await c.env.DB.prepare(
+      `UPDATE complaints SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+    ).bind(status, id).run();
     return c.json({ ok: true });
   });
 

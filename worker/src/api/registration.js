@@ -2,6 +2,7 @@ import { hashPassword } from '../auth.js';
 import { getSiteSettings, makeUniqueChatId } from '../db.js';
 import { ApiError } from '../errors.js';
 import { errorResponse, parseJsonRequest } from '../utils.js';
+import { welcomeNewUser } from '../team.js';
 
 function regDisabledResponse(c) {
   return errorResponse('注册功能未开放', 403);
@@ -178,6 +179,8 @@ export function registerRegistrationRoutes(app) {
       .bind(xiSub, userId)
       .run();
     await c.env.OAUTH_TEMP.delete(tempToken);
+
+    await welcomeNewUser(c.env, userId, displayName);
 
     return c.json({
       ok: true,

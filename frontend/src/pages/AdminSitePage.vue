@@ -22,10 +22,17 @@ const copiedInviteId = ref(0);
 const siteForm = reactive({
   siteName: 'Xiliao',
   siteIconUrl: '',
-  allowPublicRegister: false
+  allowRegistration: false,
+  autoDeleteLargeFiles: false,
+  largeFileThreshold: 10485760
 });
 const inviteForm = reactive({
   note: ''
+});
+
+const largeFileMb = computed({
+  get: () => Math.round((siteForm.largeFileThreshold || 10485760) / 1048576),
+  set: (v) => { siteForm.largeFileThreshold = Math.max(1, Number(v) || 10) * 1048576; }
 });
 
 const publicGroupCount = computed(
@@ -45,7 +52,9 @@ async function loadOverview() {
     dms.value = payload.dms;
     siteForm.siteName = payload.site?.siteName || 'Xiliao';
     siteForm.siteIconUrl = payload.site?.siteIconUrl || '';
-    siteForm.allowPublicRegister = payload.site?.allowPublicRegister || false;
+    siteForm.allowRegistration = payload.site?.allowRegistration || false;
+    siteForm.autoDeleteLargeFiles = payload.site?.autoDeleteLargeFiles || false;
+    siteForm.largeFileThreshold = payload.site?.largeFileThreshold || 10485760;
     const invitePayload = await api.listAdminRegisterLinks();
     invites.value = invitePayload.invites || [];
   } catch (currentError) {
@@ -85,7 +94,9 @@ async function saveSiteSettings() {
     const payload = await api.updateAdminSiteSettings(siteForm);
     siteForm.siteName = payload.site.siteName;
     siteForm.siteIconUrl = payload.site.siteIconUrl;
-    siteForm.allowPublicRegister = payload.site.allowPublicRegister || false;
+    siteForm.allowRegistration = payload.site.allowRegistration || false;
+    siteForm.autoDeleteLargeFiles = payload.site.autoDeleteLargeFiles || false;
+    siteForm.largeFileThreshold = payload.site.largeFileThreshold || 10485760;
     store.setSite(payload.site);
   } catch (currentError) {
     error.value = currentError.message;
@@ -187,8 +198,16 @@ onMounted(loadOverview);
             <input v-model.trim="siteForm.siteIconUrl" placeholder="/files/... 或 https://..." />
           </label>
           <label class="field field--checkbox">
-            <input type="checkbox" v-model="siteForm.allowPublicRegister" />
-            <span>允许公开注册（用户可自行注册账号）</span>
+            <input type="checkbox" v-model="siteForm.allowRegistration" />
+            <span>开放注册（登录页显示注册入口）</span>
+          </label>
+          <label class="field field--checkbox">
+            <input type="checkbox" v-model="siteForm.autoDeleteLargeFiles" />
+            <span>自动清理 10 天前的大文件（节省存储空间）</span>
+          </label>
+          <label class="field">
+            <span>大文件阈值（MB）</span>
+            <input type="number" min="1" v-model.number="largeFileMb" placeholder="默认 10 MB" />
           </label>
           <div class="inline-actions">
             <input

@@ -28,6 +28,7 @@ export function useChatRoom({
 	const memberLoading = ref(false);
 	const wsStatus = ref("closed");
 	const composerText = ref("");
+	const composerQuote = ref(null); // 引用消息 { id, senderName, preview }
 	const pendingAttachment = ref(null);
 	const sending = ref(false);
 	const inviteSubmitting = ref(false);
@@ -334,6 +335,14 @@ export function useChatRoom({
 					applyActiveRoomActivity(payload.message);
 					nextTick().then(scrollToBottom);
 				}
+				if (payload.type === "recall" && payload.message) {
+					const idx = messages.value.findIndex((item) => item.id === payload.message.id);
+					if (idx !== -1) {
+						const next = [...messages.value];
+						next[idx] = { ...next[idx], content: '', attachment: null, revokedAt: new Date().toISOString() };
+						messages.value = next;
+					}
+				}
 				if (payload.type === "error") {
 					error.value = payload.error;
 				}
@@ -366,10 +375,12 @@ export function useChatRoom({
 					type: "send",
 					content: composerText.value,
 					attachment: pendingAttachment.value,
+					quote: composerQuote.value,
 				}),
 			);
 			composerText.value = "";
 			pendingAttachment.value = null;
+			composerQuote.value = null;
 		} catch (currentError) {
 			error.value = currentError.message;
 		} finally {
@@ -571,6 +582,19 @@ export function useChatRoom({
 		nextTick().then(scrollToBottom);
 	}, { flush: 'post' });
 
+	function recallLocally(messageId) {
+		const idx = messages.value.findIndex((item) => item.id === messageId);
+		if (idx !== -1) {
+			const next = [...messages.value];
+			next[idx] = { ...next[idx], content: '', attachment: null, revokedAt: new Date().toISOString() };
+			messages.value = next;
+		}
+	}
+
+	function removeLocally(messageId) {
+		messages.value = messages.value.filter((item) => item.id !== messageId);
+	}
+
 	return {
 		groupMembers,
 		messages,
@@ -578,6 +602,7 @@ export function useChatRoom({
 		memberLoading,
 		wsStatus,
 		composerText,
+		composerQuote,
 		pendingAttachment,
 		sending,
 		inviteSubmitting,
@@ -605,6 +630,8 @@ export function useChatRoom({
 		uploadAttachment,
 		clearAttachment,
 		loadOlder,
+		recallLocally,
+		removeLocally,
 		openGroupEditor,
 		closeGroupEditor,
 		inviteMember,

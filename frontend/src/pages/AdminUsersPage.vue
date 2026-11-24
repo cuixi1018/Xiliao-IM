@@ -63,6 +63,26 @@ async function resetPassword(user) {
   await api.resetPassword(user.id, password);
 }
 
+// ===== 封号（支持时长）=====
+const banForm = reactive({ show: false, user: null, mode: 'hours', hours: 24 });
+function openBan(user) {
+  banForm.show = true;
+  banForm.user = user;
+  banForm.mode = user.bannedUntil ? 'unban' : 'hours';
+  banForm.hours = 24;
+}
+async function submitBan() {
+  try {
+    if (banForm.mode === 'unban') {
+      await api.banUser(banForm.user.id, 'unban');
+    } else {
+      await api.banUser(banForm.user.id, banForm.mode, banForm.hours);
+    }
+    banForm.show = false;
+    await loadUsers();
+  } catch (e) { error.value = e.message; }
+}
+
 async function removeUser(user) {
   if (!window.confirm(`确认删除用户 ${user.displayName} 吗？`)) {
     return;
@@ -234,12 +254,19 @@ onMounted(loadUsers);
                   <strong>{{ user.displayName }}</strong>
                   <div class="muted">@{{ user.username }}</div>
                 </td>
-                <td>{{ user.isDisabled ? '已禁用' : '正常' }}</td>
+                <td>
+                  <span v-if="user.bannedUntil === 'permanent'" class="ban-tag">永久封禁</span>
+                  <span v-else-if="user.bannedUntil && new Date(user.bannedUntil) > new Date()" class="ban-tag">封禁至 {{ new Date(user.bannedUntil).toLocaleString() }}</span>
+                  <span v-else>{{ user.isDisabled ? '已禁用' : '正常' }}</span>
+                </td>
                 <td>{{ new Date(user.createdAt).toLocaleString() }}</td>
                 <td>
                   <div class="inline-actions">
                     <UiButton variant="secondary" size="sm" @click="toggleUser(user)">
                       {{ user.isDisabled ? '启用' : '禁用' }}
+                    </UiButton>
+                    <UiButton variant="secondary" size="sm" @click="openBan(user)">
+                      {{ user.bannedUntil ? '解封' : '封号' }}
                     </UiButton>
                     <UiButton variant="secondary" size="sm" @click="resetPassword(user)">重置密码</UiButton>
                     <UiButton variant="destructive" size="sm" @click="removeUser(user)">删除</UiButton>
@@ -251,10 +278,45 @@ onMounted(loadUsers);
         </div>
       </UiSurface>
     </div>
+
+    <!-- 封号弹窗 -->
+    <div v-if="banForm.show" class="ban-overlay" @click.self="banForm.show = false">
+      <div class="ban-dialog">
+        <h3>{{ banForm.user?.bannedUntil ? '解除封禁' : '封禁用户' }}</h3>
+        <p class="ban-sub">用户：{{ banForm.user?.displayName }}（{{ banForm.user?.username }}）</p>
+        <template v-if="!banForm.user?.bannedUntil">
+          <label class="ban-field">
+            <input type="radio" v-model="banForm.mode" value="hours" /> 临时封禁
+            <input v-if="banForm.mode === 'hours'" type="number" min="1" v-model.number="banForm.hours" class="ban-hours" /> 小时
+          </label>
+          <label class="ban-field">
+            <input type="radio" v-model="banForm.mode" value="permanent" /> 永久封禁
+          </label>
+        </template>
+        <div class="ban-actions">
+          <button type="button" class="ban-btn" @click="banForm.show = false">取消</button>
+          <button type="button" class="ban-btn primary" @click="submitBan">
+            {{ banForm.user?.bannedUntil ? '确认解封' : '确认封禁' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.ban-tag { display: inline-block; padding: 2px 8px; border-radius: 10px; background: #fdeaea; color: #fa5151; font-size: 11px; }
+.ban-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.ban-dialog { width: 380px; max-width: 92vw; background: #fff; border-radius: 14px; padding: 22px; }
+.ban-dialog h3 { margin: 0 0 6px; font-size: 17px; color: #191919; }
+.ban-sub { margin: 0 0 16px; font-size: 12px; color: #888; }
+.ban-field { display: flex; align-items: center; gap: 8px; padding: 10px 0; font-size: 13px; color: #333; }
+.ban-field input[type="radio"] { accent-color: #07c160; }
+.ban-hours { width: 80px; padding: 6px 8px; border: 1px solid #ddd; border-radius: 6px; }
+.ban-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.ban-btn { padding: 8px 18px; border: 1px solid #ddd; border-radius: 8px; background: #fff; color: #555; font-size: 13px; cursor: pointer; }
+.ban-btn.primary { background: #fa5151; border-color: #fa5151; color: #fff; }
+
 .admin-section {
   display: flex;
   flex-direction: column;

@@ -272,7 +272,8 @@ export class ChannelRoom {
         channelId: currentMeta.room.id,
         senderId: currentMeta.principal.userId,
         content: payload.content,
-        attachment: pickAttachment(payload.attachment)
+        attachment: pickAttachment(payload.attachment),
+        quote: payload.quote || null
       });
       const packet = JSON.stringify({
         type: 'message',

@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../api.js';
+import store from '../store.js';
 import UiAvatar from '../components/ui/Avatar.vue';
 import UiButton from '../components/ui/Button.vue';
 import WechatNav from '../components/WechatNav.vue';
@@ -116,7 +117,70 @@ async function chatWith(user) {
   } catch (e) { msg(e.message, 'error'); }
 }
 
-onMounted(load);
+// ===== 好友备注名 =====
+const remarkForm = reactive({ show: false, user: null, value: '' });
+function openRemark(f) {
+  remarkForm.show = true;
+  remarkForm.user = f;
+  remarkForm.value = f.remarkName || '';
+}
+async function saveRemark() {
+  try {
+    await api.setFriendRemark(remarkForm.user.id, remarkForm.value);
+    remarkForm.user.remarkName = remarkForm.value;
+    remarkForm.show = false;
+    msg('备注已保存');
+    await load();
+  } catch (e) { msg(e.message, 'error'); }
+}
+
+// ===== 投诉好友 =====
+const complaintForm = reactive({ show: false, user: null, reason: '骚扰或诈骗', detail: '' });
+const complaintReasons = ['骚扰或诈骗', '色情或违法内容', '冒充他人', '广告引流', '其他'];
+function openComplaint(f) {
+  complaintForm.show = true;
+  complaintForm.user = f;
+  complaintForm.reason = '骚扰或诈骗';
+  complaintForm.detail = '';
+}
+async function submitComplaint() {
+  try {
+    await api.submitComplaint({ targetId: complaintForm.user.id, reason: complaintForm.reason, detail: complaintForm.detail });
+    complaintForm.show = false;
+    msg('投诉已提交，管理员会尽快处理');
+  } catch (e) { msg(e.message, 'error'); }
+}
+
+// ===== 好友验证开关 =====
+const friendVerify = ref(true);
+async function loadMe() {
+  try {
+    const data = await api.getMe();
+    friendVerify.value = data.profile?.friendVerifyRequired ?? true;
+  } catch { /* ignore */ }
+}
+async function toggleFriendVerify() {
+  try {
+    await api.setFriendVerify(friendVerify.value);
+    msg(friendVerify.value ? '已开启好友验证：别人加你需你同意' : '已关闭好友验证：别人可直接添加你');
+  } catch (e) { msg(e.message, 'error'); }
+}
+
+onMounted(() => {
+  load();
+  loadMe();
+  // 接收全局搜索"添加的人"
+  const raw = sessionStorage.getItem('searchAddUser');
+  if (raw) {
+    sessionStorage.removeItem('searchAddUser');
+    try {
+      const u = JSON.parse(raw);
+      keyword.value = u.chatId || u.displayName;
+      searchOpen.value = true;
+      doSearch();
+    } catch { /* ignore */ }
+  }
+});
 </script>
 
 <template>
@@ -151,6 +215,12 @@ onMounted(load);
         <p v-else-if="keyword && !searching" class="hint">没有找到匹配的用户</p>
       </div>
 
+      <label class="verify-toggle">
+        <span>好友验证</span>
+        <input type="checkbox" v-model="friendVerify" @change="toggleFriendVerify" />
+        <small>{{ friendVerify ? '加我需要我同意' : '可直接加我' }}</small>
+      </label>
+
       <div class="tabs">
         <button :class="{ active: tab === 'friends' }" @click="tab = 'friends'">好友 ({{ friendCount }})</button>
         <button :class="{ active: tab === 'adds' }" @click="tab = 'adds'">新的朋友 <span v-if="addCount" class="dot">{{ addCount }}</span></button>
@@ -168,9 +238,12 @@ onMounted(load);
           <div v-for="f in friends" :key="f.id" class="person-row" @click="chatWith(f)">
             <UiAvatar :src="f.avatarUrl" :fallback="f.displayName?.[0] || '?'" size="sm" />
             <div class="row-main">
-              <strong>{{ f.displayName }}</strong>
-              <small>细聊号：{{ f.chatId }}</small>
+              <strong>{{ f.remarkName || f.displayName }}</strong>
+              <small v-if="f.remarkName">昵称：{{ f.displayName }} · {{ f.chatId }}</small>
+              <small v-else>细聊号：{{ f.chatId }}</small>
             </div>
+            <button type="button" class="row-action" title="设置备注" @click.stop="openRemark(f)">备注</button>
+            <button type="button" class="row-action" title="投诉" @click.stop="openComplaint(f)">投诉</button>
             <button type="button" class="row-action" title="删除好友" @click.stop="removeFriend(f)">删除</button>
             <button type="button" class="row-action danger" title="拉黑" @click.stop="block(f)">拉黑</button>
           </div>
@@ -216,6 +289,35 @@ onMounted(load);
         <UiButton @click="router.push('/')">去聊天</UiButton>
       </div>
     </main>
+
+    <!-- 备注弹窗 -->
+    <div v-if="remarkForm.show" class="cp-overlay" @click.self="remarkForm.show = false">
+      <div class="cp-dialog">
+        <h3>设置备注</h3>
+        <p class="cp-sub">为「{{ remarkForm.user?.displayName }}」设置一个备注名，群里将显示此名称。</p>
+        <input v-model="remarkForm.value" class="cp-input" placeholder="输入备注名" maxlength="40" />
+        <div class="cp-actions">
+          <button type="button" class="cp-btn" @click="remarkForm.show = false">取消</button>
+          <button type="button" class="cp-btn primary" @click="saveRemark">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 投诉弹窗 -->
+    <div v-if="complaintForm.show" class="cp-overlay" @click.self="complaintForm.show = false">
+      <div class="cp-dialog">
+        <h3>投诉好友</h3>
+        <p class="cp-sub">投诉「{{ complaintForm.user?.displayName }}」，管理员会尽快核实处理。</p>
+        <select v-model="complaintForm.reason" class="cp-input">
+          <option v-for="r in complaintReasons" :key="r" :value="r">{{ r }}</option>
+        </select>
+        <textarea v-model="complaintForm.detail" class="cp-input cp-textarea" rows="4" placeholder="请描述具体情况（选填）"></textarea>
+        <div class="cp-actions">
+          <button type="button" class="cp-btn" @click="complaintForm.show = false">取消</button>
+          <button type="button" class="cp-btn danger" @click="submitComplaint">提交投诉</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -260,4 +362,18 @@ onMounted(load);
 .empty-icon { font-size: 56px; margin-bottom: 12px; }
 .empty-card h2 { font-size: 20px; color: #333; margin: 0 0 10px; }
 .empty-card p { font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
+.verify-toggle { display: flex; align-items: center; gap: 8px; padding: 10px 16px; font-size: 12px; color: #555; border-bottom: 1px solid #f0f0f0; }
+.verify-toggle input { accent-color: #07c160; }
+.verify-toggle small { margin-left: auto; color: #aaa; }
+.cp-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.cp-dialog { width: 380px; max-width: 92vw; background: #fff; border-radius: 14px; padding: 22px; }
+.cp-dialog h3 { margin: 0 0 6px; font-size: 17px; color: #191919; }
+.cp-sub { margin: 0 0 14px; font-size: 12px; color: #888; line-height: 1.5; }
+.cp-input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; margin-bottom: 10px; font-family: inherit; outline: none; }
+.cp-input:focus { border-color: #07c160; }
+.cp-textarea { resize: vertical; }
+.cp-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.cp-btn { padding: 8px 18px; border: 1px solid #ddd; border-radius: 8px; background: #fff; color: #555; font-size: 13px; cursor: pointer; }
+.cp-btn.primary { background: #07c160; border-color: #07c160; color: #fff; }
+.cp-btn.danger { background: #fa5151; border-color: #fa5151; color: #fff; }
 </style>

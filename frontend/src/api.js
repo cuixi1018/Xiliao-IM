@@ -368,6 +368,98 @@ export default {
   },
   deleteMoment(id) {
     return request(`/moments/${id}`, { method: 'DELETE' });
+  },
+
+  // ===== 消息操作：撤回 / 删除 / 转发 / 搜索 =====
+  recallMessage(id) {
+    return request(`/messages/${id}/recall`, { method: 'POST' });
+  },
+  deleteMessage(id) {
+    return request(`/messages/${id}`, { method: 'DELETE' });
+  },
+  forwardMessage(id, toKind, toRoomId, content) {
+    return request(`/messages/${id}/forward`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { toKind, toRoomId, content }
+    });
+  },
+  searchChatMessages(keyword, roomId) {
+    const query = new URLSearchParams({ keyword });
+    if (roomId) query.set('roomId', String(roomId));
+    return request(`/messages/search?${query.toString()}`);
+  },
+
+  // ===== 全局搜索 =====
+  globalSearch(q) {
+    return request(`/search?q=${encodeURIComponent(q)}`);
+  },
+
+  // ===== 资料扩展 / 细聊号 / 好友验证 / 备注 / 投诉 =====
+  updateChatId(chatId) {
+    return request('/me/chat-id', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: { chatId }
+    });
+  },
+  getMe() {
+    return request('/me');
+  },
+  setFriendVerify(required) {
+    return request('/me/friend-verify', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: { required }
+    });
+  },
+  markWelcomeSeen() {
+    return request('/me/welcome-seen', { method: 'POST' });
+  },
+  setFriendRemark(userId, remark) {
+    return request(`/friends/${userId}/remark`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: { remark }
+    });
+  },
+  getFriendDetail(userId) {
+    return request(`/friends/${userId}/detail`);
+  },
+  submitComplaint(payload) {
+    return request('/complaints', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload
+    });
+  },
+
+  // ===== 群公告 =====
+  setChannelAnnouncement(channelId, announcement) {
+    return request(`/channels/${channelId}/announcement`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: { announcement }
+    });
+  },
+
+  // ===== 管理后台：封号 / 投诉 / 站点设置 =====
+  banUser(userId, mode, hours) {
+    return request(`/admin/users/${userId}/ban`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: { mode, hours }
+    });
+  },
+  adminComplaints(status) {
+    return request(`/admin/complaints?status=${encodeURIComponent(status || 'pending')}`);
+  },
+  handleComplaint(id, status) {
+    return request(`/admin/complaints/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: { status }
+    });
   }
 };
 

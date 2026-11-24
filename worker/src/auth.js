@@ -97,6 +97,10 @@ export async function createSession(env, user) {
     displayName: user.display_name,
     chatId,
     avatarUrl: user.avatar_key ? `/files/${encodeURIComponent(user.avatar_key)}` : '',
+    signature: user.signature || '',
+    gender: user.gender || 'secret',
+    birthdate: user.birthdate || '',
+    isNewUser: Boolean(Number(user.is_new_user)),
     isAdmin: isAdminUser(env, user),
     sessionVersion: toSessionVersion(user.session_version)
   };

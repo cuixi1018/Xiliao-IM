@@ -64,11 +64,13 @@ export async function getSiteSettings(db) {
   return {
     siteName: String(map.site_name || 'Xiliao'),
     siteIconUrl: String(map.site_icon_url || ''),
-    allowRegistration: String(map.allow_registration || '0') === '1'
+    allowRegistration: String(map.allow_registration || '0') === '1',
+    autoDeleteLargeFiles: String(map.auto_delete_large_files || '0') === '1',
+    largeFileThreshold: Number(map.large_file_threshold || 10485760)
   };
 }
 
-export async function updateSiteSettings(db, { siteName, siteIconUrl, allowRegistration }) {
+export async function updateSiteSettings(db, { siteName, siteIconUrl, allowRegistration, autoDeleteLargeFiles, largeFileThreshold }) {
   const statements = [];
 
   if (siteName !== undefined) {
@@ -113,6 +115,34 @@ export async function updateSiteSettings(db, { siteName, siteIconUrl, allowRegis
     );
   }
 
+  if (autoDeleteLargeFiles !== undefined) {
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO site_settings (setting_key, setting_value, updated_at)
+           VALUES ('auto_delete_large_files', ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(setting_key) DO UPDATE
+           SET setting_value = excluded.setting_value,
+               updated_at = CURRENT_TIMESTAMP`
+        )
+        .bind(autoDeleteLargeFiles ? '1' : '0')
+    );
+  }
+
+  if (largeFileThreshold !== undefined) {
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO site_settings (setting_key, setting_value, updated_at)
+           VALUES ('large_file_threshold', ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(setting_key) DO UPDATE
+           SET setting_value = excluded.setting_value,
+               updated_at = CURRENT_TIMESTAMP`
+        )
+        .bind(String(Math.max(1024, Number(largeFileThreshold) || 10485760)))
+    );
+  }
+
   if (statements.length) {
     await db.batch(statements);
   }
@@ -123,7 +153,7 @@ export async function updateSiteSettings(db, { siteName, siteIconUrl, allowRegis
 export async function getChannelById(db, channelId) {
   const { results } = await db
     .prepare(
-      `SELECT id, name, description, avatar_key, kind, dm_key, created_by
+      `SELECT id, name, description, avatar_key, kind, dm_key, created_by, announcement, announcement_at
        FROM channels
        WHERE id = ?
          AND deleted_at IS NULL
@@ -198,7 +228,7 @@ export async function canManageChannel(db, channelId, userId, isAdmin = false) {
   return { channel, membership };
 }
 
-export async function listChannelMembers(db, channelId) {
+export async function listChannelMembers(db, channelId, viewerId = null) {
   const { results } = await db
     .prepare(
       `SELECT
@@ -207,21 +237,39 @@ export async function listChannelMembers(db, channelId) {
          cm.joined_at,
          u.username,
          u.display_name,
-         u.avatar_key
+         u.chat_id,
+         u.avatar_key,
+         u.signature,
+         u.gender,
+         u.birthdate,
+         (
+           SELECT f.remark FROM friendships f
+           WHERE f.status = 'accepted'
+             AND ((f.requester_id = ? AND f.addressee_id = cm.user_id)
+               OR (f.addressee_id = ? AND f.requester_id = cm.user_id))
+           LIMIT 1
+         ) AS remark
        FROM channel_members cm
        JOIN users u ON u.id = cm.user_id
        WHERE cm.channel_id = ?
          AND u.deleted_at IS NULL
        ORDER BY CASE cm.role WHEN 'owner' THEN 0 ELSE 1 END, u.display_name ASC`
     )
-    .bind(Number(channelId))
+      .bind(Number(viewerId || 0), Number(viewerId || 0), Number(channelId))
     .all();
 
   return results.map((row) => ({
     id: Number(row.user_id),
     username: row.username,
     displayName: row.display_name,
+    chatId: row.chat_id || '',
     avatarUrl: row.avatar_key ? publicFileUrl(row.avatar_key) : '',
+    signature: row.signature || '',
+    gender: row.gender || 'secret',
+    birthdate: row.birthdate || '',
+    // 群里优先显示我给对方设置的备注名，其次昵称
+    remarkName: row.remark || '',
+    displayInGroup: row.remark || row.display_name,
     role: row.role,
     joinedAt: row.joined_at
   }));
@@ -230,6 +278,8 @@ export async function listChannelMembers(db, channelId) {
 export async function listMessages(db, roomId, before = null, limit = 30, viewerId = null) {
   const filters = ['m.channel_id = ?', 'm.deleted_at IS NULL'];
   const binds = [Number(roomId)];
+  // SELECT 中备注名子查询需要两个 viewerId（放在最前）
+  const displayViewer = viewerId === null || viewerId === undefined ? 0 : Number(viewerId);
   if (before) {
     filters.push('m.id < ?');
     binds.push(Number(before));
@@ -245,6 +295,11 @@ export async function listMessages(db, roomId, before = null, limit = 30, viewer
       SELECT blocked_user_id FROM blacklist WHERE user_id = ?
     )`);
     binds.push(Number(viewerId));
+    // 屏蔽我自己删除的消息
+    filters.push(`m.id NOT IN (
+      SELECT message_id FROM message_delete_points WHERE user_id = ?
+    )`);
+    binds.push(Number(viewerId));
   }
 
   const { results } = await db
@@ -257,10 +312,20 @@ export async function listMessages(db, roomId, before = null, limit = 30, viewer
          m.attachment_type,
          m.attachment_size,
          m.attachment_duration,
+         m.kind,
+         m.quote_id,
+         m.quote_snapshot,
+         m.revoked_at,
          m.created_at,
          u.id AS sender_id,
          u.username AS sender_username,
-         u.display_name AS sender_display_name,
+         COALESCE((
+           SELECT f.remark FROM friendships f
+           WHERE f.status = 'accepted' AND f.remark != ''
+             AND ((f.requester_id = ? AND f.addressee_id = m.sender_id)
+               OR (f.addressee_id = ? AND f.requester_id = m.sender_id))
+           LIMIT 1
+         ), u.display_name) AS sender_display_name,
          u.avatar_key AS sender_avatar_key
        FROM messages m
        JOIN users u ON u.id = m.sender_id
@@ -268,7 +333,7 @@ export async function listMessages(db, roomId, before = null, limit = 30, viewer
        ORDER BY m.id DESC
        LIMIT ?`
     )
-    .bind(...binds, Number(limit))
+    .bind(displayViewer, displayViewer, ...binds, Number(limit))
     .all();
 
   return results
@@ -336,9 +401,12 @@ export async function countUnreadMessages(db, { channelId, userId }) {
          ), 0)
          AND m.sender_id NOT IN (
            SELECT blocked_user_id FROM blacklist WHERE user_id = ?
+         )
+         AND m.id NOT IN (
+           SELECT message_id FROM message_delete_points WHERE user_id = ?
          )`
     )
-      .bind(Number(channelId), Number(userId), Number(channelId), Number(userId), Number(userId), Number(userId))
+      .bind(Number(channelId), Number(userId), Number(channelId), Number(userId), Number(userId), Number(userId), Number(userId))
       .all();
 
   return Number(results[0]?.unread_count || 0);
@@ -357,13 +425,21 @@ export async function listRoomMemberIds(db, channelId) {
   return results.map((row) => Number(row.user_id)).filter((userId) => Number.isFinite(userId));
 }
 
-export async function insertMessage(db, { channelId, senderId, content, attachment }) {
+export async function insertMessage(db, { channelId, senderId, content, attachment, kind = 'user', quote = null }) {
   const cleanAttachment = pickAttachment(attachment);
   const cleanContent = String(content || '').trim();
 
   if (!cleanContent && !cleanAttachment) {
     throw new Error('Message content cannot be empty');
   }
+
+  const cleanKind = ['user', 'system', 'forward'].includes(kind) ? kind : 'user';
+  const quoteId = quote && Number(quote.id) ? Number(quote.id) : null;
+  const quoteSnapshot = quote ? JSON.stringify({
+    id: Number(quote.id) || 0,
+    senderName: String(quote.senderName || ''),
+    preview: String(quote.preview || '').slice(0, 300)
+  }) : '';
 
   const result = await db
     .prepare(
@@ -375,8 +451,11 @@ export async function insertMessage(db, { channelId, senderId, content, attachme
          attachment_name,
          attachment_type,
          attachment_size,
-         attachment_duration
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+         attachment_duration,
+         kind,
+         quote_id,
+         quote_snapshot
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
       .bind(
         Number(channelId),
@@ -386,7 +465,10 @@ export async function insertMessage(db, { channelId, senderId, content, attachme
         cleanAttachment?.name || null,
         cleanAttachment?.type || null,
         cleanAttachment?.size || null,
-        cleanAttachment?.duration || null
+        cleanAttachment?.duration || null,
+        cleanKind,
+        quoteId,
+        quoteSnapshot
       )
     .run();
 
@@ -404,6 +486,10 @@ export async function getMessageById(db, messageId) {
          m.attachment_type,
          m.attachment_size,
          m.attachment_duration,
+         m.kind,
+         m.quote_id,
+         m.quote_snapshot,
+         m.revoked_at,
          m.created_at,
          u.id AS sender_id,
          u.username AS sender_username,
@@ -421,17 +507,31 @@ export async function getMessageById(db, messageId) {
 }
 
 export function mapMessage(row) {
+  const kind = row.kind || 'user';
+  const revokedAt = row.revoked_at || null;
+  let quote = null;
+  if (row.quote_snapshot) {
+    try {
+      quote = JSON.parse(row.quote_snapshot);
+    } catch {
+      quote = null;
+    }
+  }
+
   return {
     id: Number(row.id),
-    content: row.content,
+    content: revokedAt ? '' : row.content,
     createdAt: row.created_at,
+    kind,
+    revokedAt,
+    quote,
     sender: {
       id: Number(row.sender_id),
       username: row.sender_username,
       displayName: row.sender_display_name,
       avatarUrl: row.sender_avatar_key ? publicFileUrl(row.sender_avatar_key) : ''
     },
-    attachment: row.attachment_key
+    attachment: !revokedAt && row.attachment_key
       ? {
           key: row.attachment_key,
           name: row.attachment_name,
