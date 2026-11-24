@@ -6,6 +6,7 @@ import PendingAttachmentPreview from '../components/chat/PendingAttachmentPrevie
 import UiAvatar from '../components/ui/Avatar.vue';
 import UiTextarea from '../components/ui/Textarea.vue';
 import WechatNav from '../components/WechatNav.vue';
+import QRCode from 'qrcode';
 import api from '../api.js';
 import { useActiveRoom } from '../composables/useActiveRoom.js';
 import { useChatRoom } from '../composables/useChatRoom.js';
@@ -358,6 +359,85 @@ async function dissolveGroup() {
     await refreshSidebar();
     error.value = '';
   } catch (e) { error.value = e.message; }
+}
+
+// ===== 群二维码（扫码进群，10 天有效）=====
+const appOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+const groupQrOpen = ref(false);
+const groupQrDataUrl = ref('');
+const groupQrInfo = ref(null);
+const groupQrLoading = ref(false);
+async function openGroupQr() {
+  groupQrOpen.value = true;
+  groupQrDataUrl.value = '';
+  groupQrInfo.value = null;
+  await generateGroupQr();
+}
+async function generateGroupQr() {
+  if (!activeRoom.value) return;
+  groupQrLoading.value = true;
+  error.value = '';
+  try {
+    const data = await api.createChannelInviteCode(activeRoom.value.id);
+    groupQrInfo.value = data;
+    const url = `${window.location.origin}/join/${encodeURIComponent(data.token)}`;
+    groupQrDataUrl.value = await QRCode.toDataURL(url, {
+      width: 460, margin: 2, color: { dark: '#191919ff', light: '#ffffffff' }
+    });
+  } catch (e) { error.value = e.message; }
+  finally { groupQrLoading.value = false; }
+}
+function copyGroupQrLink() {
+  if (!groupQrInfo.value) return;
+  const url = `${window.location.origin}/join/${encodeURIComponent(groupQrInfo.value.token)}`;
+  navigator.clipboard?.writeText(url).then(() => {
+    error.value = '群邀请链接已复制';
+    window.setTimeout(() => { if (error.value === '群邀请链接已复制') error.value = ''; }, 1800);
+  }).catch(() => { error.value = '复制失败，请手动复制下方链接'; });
+}
+function saveGroupQr() {
+  if (!groupQrDataUrl.value) return;
+  const a = document.createElement('a');
+  a.href = groupQrDataUrl.value;
+  a.download = `群二维码-${activeRoom.value?.name || '群聊'}.png`;
+  a.click();
+}
+
+// ===== 投诉用户 =====
+const complaintReasons = ['色情低俗', '诈骗或广告', '辱骂人身攻击', '骚扰他人', '发布违法信息', '其他'];
+const complaintOpen = ref(false);
+const complaintForm = reactive({ targetId: null, targetName: '', reason: '', detail: '' });
+const complaintSubmitting = ref(false);
+function openComplaint(targetId, targetName) {
+  if (!targetId) return;
+  closeMsgMenu();
+  complaintForm.targetId = targetId;
+  complaintForm.targetName = targetName || '该用户';
+  complaintForm.reason = '';
+  complaintForm.detail = '';
+  error.value = '';
+  complaintOpen.value = true;
+}
+async function submitComplaint() {
+  if (!complaintForm.reason) { error.value = '请选择投诉原因'; return; }
+  complaintSubmitting.value = true;
+  error.value = '';
+  try {
+    await api.submitComplaint({
+      targetId: complaintForm.targetId,
+      reason: complaintForm.reason,
+      detail: complaintForm.detail.trim()
+    });
+    complaintOpen.value = false;
+    error.value = '投诉已提交，管理员会尽快处理';
+    window.setTimeout(() => { if (error.value === '投诉已提交，管理员会尽快处理') error.value = ''; }, 2600);
+  } catch (e) { error.value = e.message; }
+  finally { complaintSubmitting.value = false; }
+}
+function complainMessageSender() {
+  const msg = msgMenu.message;
+  if (!msg?.sender?.id) return;
+  openComplaint(msg.sender.id, msg.sender.displayName || msg.sender.username);
 }
 
 // 更多操作菜单
@@ -818,6 +898,7 @@ onBeforeUnmount(() => {
       <button v-if="canDelete(msgMenu.message)" type="button" class="danger" @click="doDeleteMsg">🗑️ 删除</button>
       <button type="button" @click="doQuote">💬 引用</button>
       <button v-if="canForward(msgMenu.message)" type="button" @click="openForward">➡️ 转发</button>
+      <button v-if="msgMenu.message?.sender?.id && msgMenu.message.sender.id !== session?.userId" type="button" class="danger" @click="complainMessageSender">⚠️ 投诉用户</button>
     </div>
     <div v-if="msgMenu.show" class="msg-menu-backdrop" @click="closeMsgMenu" @contextmenu.prevent="closeMsgMenu"></div>
 
@@ -868,6 +949,7 @@ onBeforeUnmount(() => {
                 </select>
                 <button type="button" class="btn-primary" @click="addGroupMember">添加</button>
               </div>
+              <button type="button" class="gm-qr-trigger" @click="openGroupQr">📱 群二维码 · 扫码进群（10天有效）</button>
             </div>
             <div class="gm-field">
               <label>群成员（{{ groupManage.members.length }}）</label>
@@ -876,7 +958,8 @@ onBeforeUnmount(() => {
                   <UiAvatar :src="m.avatarUrl" :fallback="(m.displayInGroup||m.displayName)?.[0] || '?'" size="sm" />
                   <span class="gm-member-name">{{ m.displayInGroup || m.displayName }}</span>
                   <span v-if="m.role === 'owner'" class="gm-owner-tag">群主</span>
-                  <button v-else type="button" class="gm-kick" @click="kickMember(m)">移出</button>
+                  <button v-if="m.id !== session?.userId" type="button" class="gm-report" @click="openComplaint(m.id, m.displayInGroup || m.displayName)">投诉</button>
+                  <button v-if="m.role !== 'owner'" type="button" class="gm-kick" @click="kickMember(m)">移出</button>
                 </div>
               </div>
             </div>
@@ -886,6 +969,49 @@ onBeforeUnmount(() => {
           </div>
           <div class="modal-actions">
             <button type="button" class="btn-secondary" @click="groupManageOpen = false">关闭</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 群二维码弹窗 -->
+    <Transition name="modal-fade">
+      <div v-if="groupQrOpen" class="modal-overlay" @click.self="groupQrOpen = false">
+        <div class="modal-card group-qr-card">
+          <h3>群二维码</h3>
+          <p class="add-friend-hint">好友扫码即可加入本群，有效期 10 天</p>
+          <div v-if="groupQrLoading" class="hint-text">生成中…</div>
+          <template v-else>
+            <img v-if="groupQrDataUrl" :src="groupQrDataUrl" alt="群二维码" class="group-qr-img" />
+            <p v-if="groupQrInfo" class="group-qr-expire">有效期至 {{ new Date(groupQrInfo.expiresAt).toLocaleString() }}</p>
+            <p v-if="groupQrInfo" class="group-qr-link">{{ appOrigin }}/join/{{ groupQrInfo.token }}</p>
+          </template>
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" @click="copyGroupQrLink">复制链接</button>
+            <button type="button" class="btn-secondary" @click="saveGroupQr">保存图片</button>
+            <button type="button" class="btn-secondary" @click="generateGroupQr">刷新</button>
+            <button type="button" class="btn-primary" @click="groupQrOpen = false">关闭</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 投诉弹窗 -->
+    <Transition name="modal-fade">
+      <div v-if="complaintOpen" class="modal-overlay" @click.self="complaintOpen = false">
+        <div class="modal-card">
+          <h3>投诉用户</h3>
+          <p class="add-friend-hint">投诉对象：{{ complaintForm.targetName }}</p>
+          <select v-model="complaintForm.reason" class="modal-input">
+            <option value="">请选择投诉原因</option>
+            <option v-for="r in complaintReasons" :key="r" :value="r">{{ r }}</option>
+          </select>
+          <textarea v-model="complaintForm.detail" rows="3" class="gm-textarea" placeholder="补充说明（选填）"></textarea>
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" @click="complaintOpen = false">取消</button>
+            <button type="button" class="btn-primary" :disabled="complaintSubmitting" @click="submitComplaint">
+              {{ complaintSubmitting ? '提交中…' : '提交投诉' }}
+            </button>
           </div>
         </div>
       </div>
@@ -1730,6 +1856,14 @@ onBeforeUnmount(() => {
 .gm-member-name { flex: 1; font-size: 13px; color: #191919; }
 .gm-owner-tag { font-size: 11px; color: #07c160; background: #eaf8ef; padding: 2px 8px; border-radius: 10px; }
 .gm-kick { border: none; background: transparent; color: #fa5151; font-size: 12px; cursor: pointer; }
+.gm-report { border: none; background: transparent; color: #e6a23c; font-size: 12px; cursor: pointer; }
+.gm-qr-trigger { margin-top: 6px; padding: 9px 12px; border: 1px solid #07c160; border-radius: 8px; background: #f0faf4; color: #07c160; font-size: 13px; cursor: pointer; }
+.gm-qr-trigger:hover { background: #e4f7ec; }
+.group-qr-card { width: 420px; max-width: 92vw; }
+.group-qr-img { display: block; width: 240px; height: 240px; margin: 8px auto; }
+.group-qr-expire { text-align: center; font-size: 12px; color: #888; margin-top: 4px; }
+.group-qr-link { text-align: center; font-size: 11px; color: #576b95; word-break: break-all; margin-top: 8px; }
+.group-qr-card .modal-actions { flex-wrap: wrap; }
 .gm-danger-zone { border-top: 1px solid #f0f0f0; padding-top: 12px; }
 .btn-danger { padding: 8px 16px; border: none; border-radius: 8px; background: #fa5151; color: #fff; font-size: 13px; cursor: pointer; }
 

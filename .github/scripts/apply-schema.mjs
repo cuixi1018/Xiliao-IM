@@ -265,6 +265,17 @@ async function main() {
     )`,
   );
 
+  await createTable(
+    "channel_invite_codes",
+    `CREATE TABLE IF NOT EXISTS channel_invite_codes (
+      token TEXT PRIMARY KEY,
+      channel_id INTEGER NOT NULL,
+      created_by INTEGER NOT NULL,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+  );
+
   // 5) 索引
   console.log("[indexes]");
   await createIndex("idx_users_chat_id", "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_chat_id ON users(chat_id) WHERE chat_id IS NOT NULL");
@@ -276,6 +287,7 @@ async function main() {
   await createIndex("idx_moment_comments_moment", "CREATE INDEX IF NOT EXISTS idx_moment_comments_moment ON moment_comments(moment_id, created_at ASC)");
   await createIndex("idx_complaints_status", "CREATE INDEX IF NOT EXISTS idx_complaints_status ON complaints(status, created_at DESC)");
   await createIndex("idx_complaints_target", "CREATE INDEX IF NOT EXISTS idx_complaints_target ON complaints(target_id)");
+  await createIndex("idx_channel_invite_codes_channel", "CREATE INDEX IF NOT EXISTS idx_channel_invite_codes_channel ON channel_invite_codes(channel_id, expires_at)");
 
   // 6) 默认设置
   console.log("[settings]");

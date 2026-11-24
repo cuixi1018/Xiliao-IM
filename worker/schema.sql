@@ -190,6 +190,17 @@ CREATE TABLE IF NOT EXISTS complaints (
   FOREIGN KEY (target_id) REFERENCES users(id)
 );
 
+-- 群邀请码（扫码进群，10 天有效）
+CREATE TABLE IF NOT EXISTS channel_invite_codes (
+  token TEXT PRIMARY KEY,
+  channel_id INTEGER NOT NULL,
+  created_by INTEGER NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (channel_id) REFERENCES channels(id),
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
 CREATE TABLE IF NOT EXISTS pending_r2_delete (
   object_key TEXT PRIMARY KEY,
   retry_count INTEGER NOT NULL DEFAULT 0,
@@ -264,3 +275,6 @@ CREATE INDEX IF NOT EXISTS idx_complaints_status
 
 CREATE INDEX IF NOT EXISTS idx_complaints_target
   ON complaints(target_id);
+
+CREATE INDEX IF NOT EXISTS idx_channel_invite_codes_channel
+  ON channel_invite_codes(channel_id, expires_at);

@@ -13,6 +13,7 @@ import AdminSitePage from './pages/AdminSitePage.vue';
 import AdminComplaintsPage from './pages/AdminComplaintsPage.vue';
 import AdminRoomPage from './pages/AdminRoomPage.vue';
 import SettingsPage from './pages/SettingsPage.vue';
+import JoinGroupPage from './pages/JoinGroupPage.vue';
 import { addAuthInvalidListener } from './auth-storage.js';
 
 const router = createRouter({
@@ -100,6 +101,12 @@ const router = createRouter({
       name: 'settings',
       component: SettingsPage,
       meta: { transition: 'page' }
+    },
+    {
+      path: '/join/:token',
+      name: 'join-group',
+      component: JoinGroupPage,
+      meta: { public: true, transition: 'page' }
     }
   ]
 });

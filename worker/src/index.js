@@ -521,7 +521,8 @@ app.get('/api/bootstrap', async (c) => {
       ownerDisplayName: row.owner_display_name || '',
       isMember: Boolean(Number(row.is_member)),
       myRole: row.my_role || '',
-      canManage: Boolean(Number(row.can_manage)),
+      // 管理员与群主均可管理群聊（与 /api/channels/:id/members 的判定保持一致）
+      canManage: Boolean(Number(row.can_manage)) || Boolean(session.isAdmin),
       memberCount: Number(row.member_count || 0),
       lastMessageAt: row.last_message_at || null,
       unreadCount: Number(row.unread_count || 0)

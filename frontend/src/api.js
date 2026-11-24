@@ -94,6 +94,16 @@ export default {
   joinChannel(channelId) {
     return request(`/channels/${channelId}/join`, { method: 'POST' });
   },
+  // 群二维码（扫码进群，10 天有效）
+  createChannelInviteCode(channelId) {
+    return request(`/channels/${channelId}/invite-code`, { method: 'POST' });
+  },
+  getChannelInviteCode(token) {
+    return request(`/channels/invite-code/${encodeURIComponent(token)}`);
+  },
+  joinChannelByInviteCode(token) {
+    return request(`/channels/invite-code/${encodeURIComponent(token)}/join`, { method: 'POST' });
+  },
   getChannelMembers(channelId) {
     return request(`/channels/${channelId}/members`);
   },

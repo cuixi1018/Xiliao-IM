@@ -6,7 +6,7 @@ import {
   requireAccessibleRoom
 } from '../db.js';
 import { ApiError } from '../errors.js';
-import { errorResponse, parseJsonRequest, publicFileUrl } from '../utils.js';
+import { errorResponse, parseJsonRequest, publicFileUrl, randomToken } from '../utils.js';
 import { areFriends } from './social.js';
 import { insertMessage } from '../db.js';
 
@@ -458,6 +458,140 @@ export function registerChannelRoutes(app) {
       .run();
 
     return c.json({ ok: true });
+  });
+
+  // ===== 群二维码邀请码（扫码进群，10 天有效）=====
+  const INVITE_CODE_TTL_DAYS = 10;
+
+  // 群主/管理员生成邀请码
+  app.post('/api/channels/:channelId/invite-code', async (c) => {
+    const session = c.get('session');
+    const channelId = Number(c.req.param('channelId'));
+    const channel = await getChannelById(c.env.DB, channelId);
+    if (!channel || channel.kind === 'dm') {
+      return errorResponse('群组不存在', 404);
+    }
+    const management = await canManageChannel(c.env.DB, channelId, session.userId, session.isAdmin);
+    if (!management) {
+      return errorResponse('只有群主或管理员可以生成群二维码', 403);
+    }
+
+    const token = randomToken(18);
+    const expiresAt = new Date(Date.now() + INVITE_CODE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    await c.env.DB.prepare(
+      `INSERT INTO channel_invite_codes (token, channel_id, created_by, expires_at)
+       VALUES (?, ?, ?, ?)`
+    )
+      .bind(token, channelId, session.userId, expiresAt)
+      .run();
+
+    return c.json({ ok: true, token, expiresAt, ttlDays: INVITE_CODE_TTL_DAYS });
+  });
+
+  // 扫码落地页：凭 token 查询群信息（不暴露群成员隐私）
+  app.get('/api/channels/invite-code/:token', async (c) => {
+    const token = String(c.req.param('token') || '').trim();
+    const { results } = await c.env.DB.prepare(
+      `SELECT ic.token, ic.channel_id, ic.expires_at, ic.created_by,
+              c.name, c.description, c.kind, c.avatar_key
+       FROM channel_invite_codes ic
+       JOIN channels c ON c.id = ic.channel_id
+       WHERE ic.token = ? AND c.deleted_at IS NULL AND c.kind IN ('public', 'private')
+       LIMIT 1`
+    )
+      .bind(token)
+      .all();
+    const row = results[0];
+    if (!row) {
+      return errorResponse('群二维码无效', 404);
+    }
+    if (new Date(row.expires_at).getTime() <= Date.now()) {
+      return errorResponse('群二维码已过期', 410);
+    }
+    return c.json({
+      ok: true,
+      token: row.token,
+      channel: {
+        id: Number(row.channel_id),
+        name: row.name,
+        description: row.description || '',
+        kind: row.kind,
+        avatarUrl: row.avatar_key ? publicFileUrl(row.avatar_key) : ''
+      },
+      expiresAt: row.expires_at
+    });
+  });
+
+  // 扫码后加入群（安全校验）
+  app.post('/api/channels/invite-code/:token/join', async (c) => {
+    const session = c.get('session');
+    const token = String(c.req.param('token') || '').trim();
+    const { results } = await c.env.DB.prepare(
+      `SELECT ic.channel_id, ic.expires_at, c.kind, c.name
+       FROM channel_invite_codes ic
+       JOIN channels c ON c.id = ic.channel_id
+       WHERE ic.token = ? AND c.deleted_at IS NULL AND c.kind IN ('public', 'private')
+       LIMIT 1`
+    )
+      .bind(token)
+      .all();
+    const row = results[0];
+    if (!row) {
+      return errorResponse('群二维码无效', 404);
+    }
+    if (new Date(row.expires_at).getTime() <= Date.now()) {
+      return errorResponse('群二维码已过期', 410);
+    }
+
+    const channelId = Number(row.channel_id);
+
+    // 安全校验：加入者不能被封禁
+    const me = await c.env.DB.prepare(
+      `SELECT is_disabled, banned_until FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1`
+    )
+      .bind(session.userId)
+      .all();
+    const meRow = me.results[0];
+    if (!meRow || Number(meRow.is_disabled)) {
+      return errorResponse('账号状态异常，无法加入群聊', 403);
+    }
+    const bannedUntil = meRow.banned_until;
+    if (bannedUntil === 'permanent' || (bannedUntil && new Date(bannedUntil).getTime() > Date.now())) {
+      return errorResponse('账号已被封禁，无法加入群聊', 403);
+    }
+
+    // 安全校验：被群主拉黑则不能进群
+    const owner = await c.env.DB.prepare(
+      `SELECT user_id FROM channel_members WHERE channel_id = ? AND role = 'owner' LIMIT 1`
+    )
+      .bind(channelId)
+      .all();
+    const ownerId = owner.results[0]?.user_id;
+    if (ownerId) {
+      const blocked = await c.env.DB.prepare(
+        `SELECT 1 FROM blacklist WHERE user_id = ? AND blocked_user_id = ? LIMIT 1`
+      )
+        .bind(ownerId, session.userId)
+        .all();
+      if (blocked.results[0]) {
+        return errorResponse('你已被该群主加入黑名单，无法加入群聊', 403);
+      }
+    }
+
+    // 幂等加入
+    await c.env.DB.prepare(
+      `INSERT OR IGNORE INTO channel_members (channel_id, user_id, role, invited_by)
+       VALUES (?, ?, 'member', ?)`
+    )
+      .bind(channelId, session.userId, session.userId)
+      .run();
+
+    const already = await getChannelMembership(c.env.DB, channelId, session.userId);
+    if (already?.role !== 'owner') {
+      await announceJoin(c.env.DB, channelId, session.userId, [session.displayName || '新成员']);
+    }
+
+    return c.json({ ok: true, channelId, channelName: row.name });
   });
 
   app.get('/api/admin/channels', async (c) => {
