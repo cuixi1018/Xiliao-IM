@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS channel_clear_points (
 
 -- 5) 开放注册开关：默认关闭
 INSERT OR IGNORE INTO site_settings (setting_key, setting_value)
-VALUES ('allow_registration', '0');
+VALUES ('allow_registration', '1');
 
 -- 6) 熙熙账号 -> 细聊用户映射（内置注册防重复）
 CREATE TABLE IF NOT EXISTS oauth_mappings (

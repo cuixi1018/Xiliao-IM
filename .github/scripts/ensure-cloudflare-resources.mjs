@@ -17,6 +17,7 @@ const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
 
 const LEGACY_D1_DATABASE_NAME = "cfchat-db";
 const LEGACY_KV_NAMESPACE_TITLE = "cfchat-sessions";
+const OAUTH_KV_NAMESPACE_TITLE = "cfchat-oauth-temp";
 const LEGACY_R2_BUCKET_NAME = "cfchat-files";
 
 function readEnv(...names) {
@@ -187,17 +188,16 @@ async function ensureD1Database() {
   return { id, created: true };
 }
 
-async function ensureKvNamespace() {
-  const namespaces = await listKvNamespaces();
-  const existing = namespaces.find((ns) => ns.title === kvNamespaceTitle && ns.id);
+async function ensureKvNamespace(title, namespaces) {
+  const existing = namespaces.find((ns) => ns.title === title && ns.id);
   if (existing) {
-    console.log(`KV namespace already exists: ${kvNamespaceTitle} (${existing.id})`);
+    console.log(`KV namespace already exists: ${title} (${existing.id})`);
     return { id: existing.id, created: false };
   }
 
-  console.log(`Creating KV namespace: ${kvNamespaceTitle}`);
+  console.log(`Creating KV namespace: ${title}`);
   const payload = await cloudflareRequest("POST", `/accounts/${accountId}/storage/kv/namespaces`, {
-    body: { title: kvNamespaceTitle },
+    body: { title },
   });
   const id = payload.result?.id;
   if (!id) {
@@ -230,7 +230,9 @@ async function main() {
   );
 
   const d1 = await ensureD1Database();
-  const kv = await ensureKvNamespace();
+  const namespaces = await listKvNamespaces();
+  const kv = await ensureKvNamespace(kvNamespaceTitle, namespaces);
+  const oauthKv = await ensureKvNamespace(OAUTH_KV_NAMESPACE_TITLE, namespaces);
   const r2 = await ensureR2Bucket();
 
   setOutput("d1_database_name", d1DatabaseName);
@@ -239,6 +241,8 @@ async function main() {
   setOutput("kv_namespace_title", kvNamespaceTitle);
   setOutput("kv_namespace_id", kv.id);
   setOutput("kv_created", kv.created);
+  setOutput("oauth_kv_namespace_id", oauthKv.id);
+  setOutput("oauth_kv_created", oauthKv.created);
   setOutput("r2_bucket_name", r2BucketName);
   setOutput("r2_created", r2.created);
 }

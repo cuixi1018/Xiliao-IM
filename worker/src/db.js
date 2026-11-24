@@ -64,7 +64,7 @@ export async function getSiteSettings(db) {
   return {
     siteName: String(map.site_name || 'Xiliao'),
     siteIconUrl: String(map.site_icon_url || ''),
-    allowRegistration: String(map.allow_registration || '0') === '1',
+    allowRegistration: String(map.allow_registration ?? '1') === '1',
     autoDeleteLargeFiles: String(map.auto_delete_large_files || '0') === '1',
     largeFileThreshold: Number(map.large_file_threshold || 10485760)
   };

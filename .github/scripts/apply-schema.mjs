@@ -110,6 +110,13 @@ async function setSetting(key, value) {
   );
 }
 
+async function forceSetting(key, value) {
+  await query(
+    "INSERT INTO site_settings (setting_key, setting_value) VALUES (?, ?) ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value",
+    [key, value],
+  );
+}
+
 async function main() {
   console.log("Applying idempotent schema migrations to D1...");
 
@@ -261,7 +268,7 @@ async function main() {
 
   // 6) 默认设置
   console.log("[settings]");
-  await setSetting("allow_registration", "0");
+  await forceSetting("allow_registration", "1");
   await setSetting("auto_delete_large_files", "0");
   await setSetting("large_file_threshold", "10485760");
   await setSetting("official_team_channel_id", "");

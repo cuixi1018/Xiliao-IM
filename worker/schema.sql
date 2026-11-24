@@ -206,7 +206,7 @@ INSERT OR IGNORE INTO site_settings (setting_key, setting_value)
 VALUES ('site_icon_url', '');
 
 INSERT OR IGNORE INTO site_settings (setting_key, setting_value)
-VALUES ('allow_registration', '0');
+VALUES ('allow_registration', '1');
 
 INSERT OR IGNORE INTO site_settings (setting_key, setting_value)
 VALUES ('auto_delete_large_files', '0');

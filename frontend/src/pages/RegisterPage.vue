@@ -48,7 +48,7 @@ onMounted(loadInvite);
   <div class="wx-login">
     <div class="wx-login__card">
       <div class="wx-login__brand">
-        <div class="wx-login__logo">💬</div>
+        <img class="wx-login__logo" :src="store.site.siteIconUrl || '/logo.svg'" alt="logo" />
         <h1>{{ store.site.siteName }}</h1>
         <p>邀请注册</p>
       </div>
@@ -71,7 +71,7 @@ onMounted(loadInvite);
 .wx-login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: linear-gradient(160deg, #eef2f5 0%, #dfe6e4 100%); box-sizing: border-box; }
 .wx-login__card { width: min(400px, 100%); background: #fff; border-radius: 16px; padding: 40px 34px 32px; box-shadow: 0 12px 40px rgba(0,0,0,0.06); }
 .wx-login__brand { text-align: center; margin-bottom: 28px; }
-.wx-login__logo { width: 60px; height: 60px; margin: 0 auto 14px; border-radius: 14px; background: #07c160; display: flex; align-items: center; justify-content: center; font-size: 32px; }
+.wx-login__logo { width: 64px; height: 64px; margin: 0 auto 14px; border-radius: 14px; object-fit: contain; display: block; }
 .wx-login__brand h1 { margin: 0; font-size: 22px; font-weight: 600; color: #191919; }
 .wx-login__brand p { margin: 6px 0 0; font-size: 13px; color: #9a9a9a; }
 .hint { margin: 0 0 14px; padding: 9px 12px; border-radius: 8px; font-size: 13px; text-align: center; background: #f5f8f6; color: #5a7a68; }

@@ -82,7 +82,8 @@ async function submit() {
 <template>
   <div class="reg-page">
     <div class="reg-card">
-      <div class="brand">💬 <span>细聊</span></div>
+      <img class="brand-logo" :src="store.site.siteIconUrl || '/logo.svg'" alt="logo" />
+      <div class="brand">{{ store.site.siteName }}</div>
       <p class="subtitle">使用熙熙安全账号注册</p>
 
       <div v-if="loading" class="state">正在连接熙熙账号…</div>
@@ -114,8 +115,8 @@ async function submit() {
 <style scoped>
 .reg-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; background: linear-gradient(145deg, #eef7f1 0%, #e3ede8 100%); box-sizing: border-box; }
 .reg-card { width: min(420px, 100%); background: #fff; border-radius: 20px; padding: 36px 32px; box-shadow: 0 16px 48px rgba(7,193,96,0.12); text-align: center; }
+.brand-logo { width: 64px; height: 64px; border-radius: 14px; object-fit: contain; display: block; margin: 0 auto 12px; }
 .brand { font-size: 24px; font-weight: 700; color: #191919; }
-.brand span { color: #07c160; }
 .subtitle { color: #888; font-size: 14px; margin: 8px 0 24px; }
 .state { padding: 40px 0; color: #888; }
 .info-box { background: #f4faf6; border-left: 3px solid #07c160; border-radius: 8px; padding: 12px 14px; margin-bottom: 20px; text-align: left; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #333; }
