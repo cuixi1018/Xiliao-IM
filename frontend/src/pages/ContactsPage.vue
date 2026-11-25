@@ -83,6 +83,14 @@ async function respond(req, accept) {
   }
 }
 
+async function cancelRequest(req) {
+  try {
+    await api.respondFriend(req.requestId, false);
+    msg('已撤回申请');
+    await load();
+  } catch (e) { msg(e.message, 'error'); }
+}
+
 async function removeFriend(user) {
   if (!window.confirm(`确定删除好友「${user.displayName}」吗？`)) return;
   try {
@@ -261,12 +269,18 @@ onMounted(() => {
             <button type="button" class="mini-btn primary" @click="respond(r, true)">接受</button>
             <button type="button" class="mini-btn" @click="respond(r, false)">忽略</button>
           </div>
-          <div class="section-title">已发送</div>
+          <div class="section-title">我发送的申请（{{ outgoing.length }}）</div>
           <div v-if="!outgoing.length" class="hint">暂无已发送的申请</div>
           <div v-for="r in outgoing" :key="r.requestId" class="person-row">
-            <UiAvatar :src="r.avatarUrl" :fallback="r.displayName?.[0] || '?'" size="sm" />
-            <div class="row-main"><strong>{{ r.displayName }}</strong><small>等待对方确认</small></div>
+            <button type="button" class="row-avatar-btn" @click="router.push(`/profile/${r.id}`)">
+              <UiAvatar :src="r.avatarUrl" :fallback="r.displayName?.[0] || '?'" size="sm" />
+            </button>
+            <div class="row-main" @click="router.push(`/profile/${r.id}`)" style="cursor:pointer">
+              <strong>{{ r.displayName }}</strong>
+              <small>{{ r.chatId ? '细聊号：' + r.chatId : r.note || '等待对方确认' }}</small>
+            </div>
             <span class="tag">待通过</span>
+            <button type="button" class="mini-btn danger" @click="cancelRequest(r)">撤回</button>
           </div>
         </template>
 
@@ -354,6 +368,8 @@ onMounted(() => {
 .banner.err { background: #fdeaea; color: #c0392b; }
 .mini-btn { padding: 5px 10px; border: 1px solid #ddd; border-radius: 6px; background: #fff; color: #555; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .mini-btn.primary { background: #07c160; border-color: #07c160; color: #fff; }
+.mini-btn.danger { color: #e74c3c; border-color: #f0c0bc; }
+.row-avatar-btn { padding: 0; border: none; background: none; cursor: pointer; flex-shrink: 0; }
 .row-action { border: none; background: transparent; color: #9a9a9a; font-size: 12px; cursor: pointer; padding: 4px; }
 .row-action.danger { color: #e74c3c; }
 .tag { font-size: 11px; color: #9a9a9a; white-space: nowrap; }
