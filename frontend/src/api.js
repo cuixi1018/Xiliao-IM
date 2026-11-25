@@ -355,8 +355,12 @@ export default {
   },
 
   // ===== 朋友圈 =====
-  getMoments(before) {
-    return request(`/moments${before ? `?before=${encodeURIComponent(String(before))}` : ''}`);
+  getMoments(before, userId) {
+    const params = new URLSearchParams();
+    if (before) params.set('before', String(before));
+    if (userId) params.set('userId', String(userId));
+    const qs = params.toString();
+    return request(`/moments${qs ? `?${qs}` : ''}`);
   },
   createMoment(payload) {
     return request('/moments', {
