@@ -630,20 +630,28 @@ export async function deactivateUserAccount(db, userId) {
     db.prepare(`DELETE FROM message_delete_points WHERE user_id = ?`).bind(uid)
   ]);
 
-  // 5. 给每位好友的私聊会话写一条系统提醒消息
+  // 5. 官方账号给每位好友发一条系统提醒消息
+  const meRow = await db.prepare(`SELECT display_name, username FROM users WHERE id = ?`).bind(uid).all();
+  const displayName = meRow.results[0]?.display_name || meRow.results[0]?.username || '一位用户';
+  const officialRow = await db.prepare(
+    `SELECT id FROM users WHERE chat_id = 'xlofficial' AND deleted_at IS NULL LIMIT 1`
+  ).all();
   let notified = 0;
-  for (const friend of friends) {
-    try {
-      const dm = await ensureDmChannel(db, uid, Number(friend.id));
-      await insertMessage(db, {
-        channelId: Number(dm.id),
-        senderId: uid,
-        content: '我已注销账号，之后可能无法再联系，感谢陪伴。',
-        kind: 'system'
-      });
-      notified += 1;
-    } catch {
-      // 单条通知失败不影响注销主流程
+  if (officialRow.results[0]) {
+    const officialId = Number(officialRow.results[0].id);
+    for (const friend of friends) {
+      try {
+        const dm = await ensureDmChannel(db, officialId, Number(friend.id));
+        await insertMessage(db, {
+          channelId: Number(dm.id),
+          senderId: officialId,
+          content: `「${displayName}」已注销账号，你们将无法再联系，感谢陪伴。`,
+          kind: 'system'
+        });
+        notified += 1;
+      } catch {
+        // 单条通知失败不影响注销主流程
+      }
     }
   }
 
