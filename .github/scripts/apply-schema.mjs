@@ -6,6 +6,8 @@
  * 这样无论数据库是全新还是历史库，CI 每次部署都能自动补齐结构，无需手动执行迁移 SQL。
  */
 
+import { webcrypto } from "node:crypto";
+
 const API_BASE_URL = "https://api.cloudflare.com/client/v4";
 
 const token = process.env.CLOUDFLARE_API_TOKEN;
@@ -296,7 +298,102 @@ async function main() {
   await setSetting("large_file_threshold", "10485760");
   await setSetting("official_team_channel_id", "");
 
+  // 7) 一次性数据迁移：把「细聊团队官方群」改造为「注册自动添加的官方私聊」
+  //    用 official_dm_migrated 标记保证幂等（密码只重置一次）。
+  await applyOfficialDmMigration();
+
   console.log(`Done. Applied ${applied} schema change(s).`);
+}
+
+async function applyOfficialDmMigration() {
+  const flag = await query("SELECT setting_value FROM site_settings WHERE setting_key='official_dm_migrated'");
+  if (flag.length > 0) {
+    console.log("[official-dm] already migrated, skip");
+    return;
+  }
+  console.log("[official-dm] starting migration");
+
+  const enc = new TextEncoder();
+  const toB64 = (b) => Buffer.from(b).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const fromB64 = (s) => {
+    s = s.replace(/-/g, "+").replace(/_/g, "/");
+    while (s.length % 4) s += "=";
+    return Buffer.from(s, "base64");
+  };
+  const salt = toB64(webcrypto.getRandomValues(new Uint8Array(16)));
+  const km = await webcrypto.subtle.importKey("raw", enc.encode("Xiliao@2026"), "PBKDF2", false, ["deriveBits"]);
+  const bits = await webcrypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: fromB64(salt), iterations: 100000, hash: "SHA-256" },
+    km, 256,
+  );
+  const hash = toB64(new Uint8Array(bits));
+
+  // 官方账号：重置密码 + 启用
+  const off = await query("SELECT id FROM users WHERE chat_id='xlofficial' OR username='xlofficial' LIMIT 1");
+  let officialId = Number(off[0]?.id || 0);
+  if (!officialId) {
+    const created = await query(
+      "INSERT INTO users (username,display_name,password_hash,password_salt,chat_id,is_disabled,is_new_user) VALUES ('xlofficial','细聊团队',?,?,'xlofficial',0,0)",
+      [hash, salt],
+    );
+    officialId = Number(created.insertId || created.meta?.last_row_id || 0);
+    // query() 只返回 results，需再查一次
+    const re = await query("SELECT id FROM users WHERE chat_id='xlofficial' LIMIT 1");
+    officialId = Number(re[0]?.id || officialId);
+  } else {
+    await query(
+      "UPDATE users SET password_hash=?,password_salt=?,is_disabled=0,deleted_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+      [hash, salt, officialId],
+    );
+  }
+  console.log("[official-dm] official user id:", officialId);
+
+  // 找出官方群（细聊团队 public）并删除关联
+  const groups = await query("SELECT id FROM channels WHERE name='细聊团队' AND kind='public'");
+  for (const g of groups) {
+    const gid = Number(g.id);
+    for (const sql of [
+      "DELETE FROM channel_members WHERE channel_id=" + gid,
+      "DELETE FROM messages WHERE channel_id=" + gid,
+      "DELETE FROM channel_invite_codes WHERE channel_id=" + gid,
+      "DELETE FROM message_reads WHERE channel_id=" + gid,
+      "DELETE FROM channel_clear_points WHERE channel_id=" + gid,
+      "DELETE FROM channels WHERE id=" + gid,
+    ]) { await query(sql); }
+  }
+  await query("DELETE FROM site_settings WHERE setting_key='official_team_channel_id'");
+  console.log("[official-dm] removed official group(s):", groups.length);
+
+  // 给现有正常用户补官方好友 + 私聊 + 欢迎消息
+  const users = await query("SELECT id FROM users WHERE deleted_at IS NULL AND id != ? ORDER BY id", [officialId]);
+  const WELCOME = [
+    "你好，我是「细聊团队」官方助手，很高兴认识你！",
+    "这里是我们的一对一聊天窗口，我会在这里通知你新功能、系统公告和重要提醒。",
+    "有任何问题或建议，都可以直接在这里留言，我们会尽快回复。祝你在细聊玩得开心！",
+  ];
+  for (const u of users) {
+    const uid = Number(u.id);
+    const dmKey = [officialId, uid].sort((a, b) => a - b).join(":");
+    await query("INSERT OR IGNORE INTO friendships (requester_id,addressee_id,status,note) VALUES (?,?,'accepted','欢迎使用细聊')", [officialId, uid]);
+    let ch = await query("SELECT id FROM channels WHERE kind='dm' AND dm_key=? AND deleted_at IS NULL LIMIT 1", [dmKey]);
+    let chId = Number(ch[0]?.id || 0);
+    if (!chId) {
+      const cr = await query("INSERT INTO channels (name,description,kind,dm_key,created_by) VALUES (?,'','dm',?,?)", [dmKey, dmKey, officialId]);
+      // D1 REST 不直接返回 last_row_id，重新查询
+      ch = await query("SELECT id FROM channels WHERE kind='dm' AND dm_key=? ORDER BY id DESC LIMIT 1", [dmKey]);
+      chId = Number(ch[0]?.id || 0);
+      await query("INSERT OR IGNORE INTO channel_members (channel_id,user_id,role,invited_by) VALUES (?,?,'member',?)", [chId, officialId, officialId]);
+      await query("INSERT OR IGNORE INTO channel_members (channel_id,user_id,role,invited_by) VALUES (?,?,'member',?)", [chId, uid, officialId]);
+    }
+    await query("DELETE FROM messages WHERE channel_id=? AND sender_id=? AND kind='system'", [chId, officialId]);
+    for (const content of WELCOME) {
+      await query("INSERT INTO messages (channel_id,sender_id,content,kind) VALUES (?,?,?,'system')", [chId, officialId, content]);
+    }
+  }
+  console.log("[official-dm] initialized private chats for", users.length, "user(s)");
+
+  await query("INSERT OR REPLACE INTO site_settings (setting_key,setting_value) VALUES ('official_dm_migrated','1')");
+  console.log("[official-dm] migration done");
 }
 
 main().catch((error) => {
