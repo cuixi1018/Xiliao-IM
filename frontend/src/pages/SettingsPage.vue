@@ -352,11 +352,15 @@ async function changePassword() {
         <section class="settings-section">
           <h2>个人资料</h2>
           <div class="chatid-card">
-            <span>我的细聊号</span>
-            <strong>{{ session?.chatId || '—' }}</strong>
-            <button type="button" @click="copyChatId">{{ copied ? '已复制' : '复制' }}</button>
-            <button type="button" @click="openQr">二维码</button>
-            <button type="button" @click="openChangeChatId">修改</button>
+            <div class="chatid-card__main">
+              <span class="chatid-card__label">我的细聊号</span>
+              <strong>{{ session?.chatId || '—' }}</strong>
+            </div>
+            <div class="chatid-card__actions">
+              <button type="button" @click="copyChatId">{{ copied ? '已复制' : '复制' }}</button>
+              <button type="button" @click="openQr">二维码</button>
+              <button type="button" @click="openChangeChatId">修改</button>
+            </div>
           </div>
           <label class="field-compact">
             <span>显示名称（昵称）</span>
@@ -1042,16 +1046,20 @@ async function changePassword() {
 /* 微信风格微调 */
 .chatid-card {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   padding: 12px 14px;
   border-radius: 12px;
   background: linear-gradient(135deg, #eaf8ef, #f3faf5);
   border: 1px solid #d3eddc;
 }
-.chatid-card span { font-size: 12px; color: #5a7a68; }
-.chatid-card strong { flex: 1; font-size: 15px; color: #07c160; letter-spacing: 0.5px; }
-.chatid-card button { border: 1px solid #07c160; background: transparent; color: #07c160; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.chatid-card__main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.chatid-card span, .chatid-card__label { font-size: 12px; color: #5a7a68; white-space: nowrap; }
+.chatid-card strong { flex: 1; min-width: 0; font-size: 15px; color: #07c160; letter-spacing: 0.5px; word-break: break-all; }
+.chatid-card__actions { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.chatid-card button { border: 1px solid #07c160; background: transparent; color: #07c160; border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; white-space: nowrap; }
 .settings-header__left h1, .settings-section h2 { color: #191919; }
 .save-btn, .crop-confirm { background: #07c160; box-shadow: 0 2px 8px rgba(7,193,96,0.2); }
 .save-btn:hover:not(:disabled), .crop-confirm:hover { background: #06ad56; }

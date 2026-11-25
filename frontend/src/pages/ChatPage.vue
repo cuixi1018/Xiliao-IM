@@ -1887,6 +1887,8 @@ onBeforeUnmount(() => {
   /* 移动端改为微信式单栏：会话列表 / 聊天窗口二选一 */
   .chat-layout {
     width: 100vw;
+    height: 100vh;
+    height: 100dvh; /* 适配移动端地址栏，保证输入框贴底 */
     overflow: hidden;
   }
   /* 移动端保留微信导航栏（组件内部已改为底部 tab bar），仅不占横向宽度 */

@@ -141,6 +141,17 @@ img {
   border: 0;
 }
 
+/* 移动端：固定视口，避免整页滚动把聊天输入框顶下去 */
+@media (max-width: 768px) {
+  html,
+  body,
+  #app {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+}
+
 @keyframes float-orb {
   from {
     transform: translate3d(0, 0, 0) scale(1);

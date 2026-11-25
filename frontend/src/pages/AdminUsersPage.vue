@@ -642,11 +642,22 @@ onMounted(loadUsers);
   }
 
   .admin-metric-grid--compact {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
+    flex-shrink: 1;
   }
 
   :deep(.admin-metric-card) {
-    flex: 1;
+    flex: initial;
+    min-width: 0;
+    padding: 12px !important;
+  }
+  :deep(.admin-metric-card strong) {
+    font-size: 1.5rem;
+  }
+  :deep(.admin-metric-card span) {
+    font-size: 0.75rem;
   }
 }
 
