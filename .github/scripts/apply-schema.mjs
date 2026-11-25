@@ -129,17 +129,52 @@ async function forceSetting(key, value) {
 }
 
 async function main() {
-  // [临时诊断] 查询注册站 Pages 环境变量，定位 client_id 缺失原因
-  try {
-    const pr = await fetch(`${API_BASE_URL}/accounts/${accountId}/pages/projects/xl-register`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const pj = await pr.json();
-    const vars = pj?.result?.deployment_config?.env_vars || [];
-    console.log("[diag reg env] production vars:", JSON.stringify((vars.production || []).map((v) => ({ name: v.name, value: v.value ? String(v.value).slice(0, 8) + '...' : v.value }))));
-    console.log("[diag reg env] preview vars:", JSON.stringify((vars.preview || []).map((v) => ({ name: v.name }))));
-  } catch (e) {
-    console.log("[diag reg env] failed:", e.message);
+  // [一次性配置] 给注册站 Pages 写入 OAuth 环境变量（细聊辅助注册应用）
+  // 用 process.env 注入，避免把凭证硬编码进仓库；配置完可从 CI secrets 移除。
+  const REG_CLIENT_ID = process.env.REG_CLIENT_ID || "c_XYlCgovCFVUt";
+  const REG_CLIENT_SECRET = process.env.REG_CLIENT_SECRET || "s_hM9ykAWQUmsXSea3JtpTS7CIyN4YEXnt2j4JGYGz";
+  if (REG_CLIENT_ID && REG_CLIENT_SECRET) {
+    try {
+      const projUrl = `${API_BASE_URL}/accounts/${accountId}/pages/projects/xl-register`;
+      const pr = await fetch(projUrl, { headers: { Authorization: `Bearer ${token}` } });
+      const pj = await pr.json();
+      const envs = pj?.result?.deployment_config?.env_vars || {};
+      const currentId = (envs.production || []).find((v) => v.name === "CLIENT_ID")?.value;
+      if (currentId === REG_CLIENT_ID) {
+        console.log("[reg oauth] env vars already configured, skip");
+      } else {
+      const mergeVars = (list) => {
+        const out = Array.isArray(list) ? list.filter((v) => !["CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URI"].includes(v.name)) : [];
+        out.push({ type: "plain_text", name: "CLIENT_ID", value: REG_CLIENT_ID });
+        out.push({ type: "secret_text", name: "CLIENT_SECRET", value: REG_CLIENT_SECRET });
+        out.push({ type: "plain_text", name: "REDIRECT_URI", value: "https://reg.xl.cuixi.qzz.io/callback.html" });
+        return out;
+      };
+      const body = {
+        deployment_config: {
+          env_vars: {
+            production: mergeVars(envs.production),
+            preview: mergeVars(envs.preview),
+          },
+        },
+      };
+      const patch = await fetch(projUrl, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      console.log("[reg oauth] PATCH env vars status:", patch.status);
+      // 触发重新部署使环境变量生效
+      const dep = await fetch(`${projUrl}/deployments`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ branch: "main" }),
+      });
+      console.log("[reg oauth] trigger deploy status:", dep.status);
+      }
+    } catch (e) {
+      console.log("[reg oauth] config failed:", e.message);
+    }
   }
 
   console.log("Applying idempotent schema migrations to D1...");
