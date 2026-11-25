@@ -24,11 +24,15 @@ export function registerMomentRoutes(app) {
     if (!content && !imageKeys.length) {
       return errorResponse('说点什么或添加图片吧');
     }
+    // 可见范围：public(所有人，含非好友) / friends(仅好友) / private(仅自己)
+    const visibility = ['public', 'friends', 'private'].includes(payload.visibility)
+      ? payload.visibility
+      : 'public';
 
     const result = await c.env.DB.prepare(
-      `INSERT INTO moments (user_id, content, image_keys) VALUES (?, ?, ?)`
+      `INSERT INTO moments (user_id, content, image_keys, visibility) VALUES (?, ?, ?, ?)`
     )
-      .bind(session.userId, content, JSON.stringify(imageKeys))
+      .bind(session.userId, content, JSON.stringify(imageKeys), visibility)
       .run();
     return c.json({ id: Number(result.meta.last_row_id) });
   });
@@ -38,8 +42,19 @@ export function registerMomentRoutes(app) {
     const session = c.get('session');
     const limit = sanitizeLimit(c.req.query('limit'), 30, 60);
     const before = c.req.query('before');
+    const targetUserId = Number(c.req.query('userId') || 0); // 指定用户主页的朋友圈
 
-    // 我可见的作者：我自己 + 互为好友，且双方未拉黑
+    // 我拉黑的及拉黑我的（这些作者的内容一律不展示）
+    const blockedRows = await c.env.DB.prepare(
+      `SELECT blocked_user_id AS uid FROM blacklist WHERE user_id = ?
+       UNION
+       SELECT user_id AS uid FROM blacklist WHERE blocked_user_id = ?`
+    )
+      .bind(session.userId, session.userId)
+      .all();
+    const blockedIds = new Set(blockedRows.results.map((r) => Number(r.uid)));
+
+    // 我的好友 id 集合（用于 friends 可见性判断）
     const friendIds = await c.env.DB.prepare(
       `SELECT
          CASE WHEN f.requester_id = ? THEN f.addressee_id ELSE f.requester_id END AS user_id
@@ -48,33 +63,24 @@ export function registerMomentRoutes(app) {
     )
       .bind(session.userId, session.userId, session.userId)
       .all();
-    const visibleIds = new Set([session.userId, ...friendIds.results.map((r) => Number(r.user_id))]);
-    // 排除我拉黑的及拉黑我的
-    const blockedRows = await c.env.DB.prepare(
-      `SELECT blocked_user_id AS uid FROM blacklist WHERE user_id = ?
-       UNION
-       SELECT user_id AS uid FROM blacklist WHERE blocked_user_id = ?`
-    )
-      .bind(session.userId, session.userId)
-      .all();
-    for (const row of blockedRows.results) {
-      visibleIds.delete(Number(row.uid));
-    }
-    if (!visibleIds.size) {
-      return c.json({ moments: [] });
-    }
+    const friendIdSet = new Set(friendIds.results.map((r) => Number(r.user_id)));
 
-    const placeholders = [...visibleIds].map(() => '?').join(', ');
-    const filters = [`m.deleted_at IS NULL`, `u.deleted_at IS NULL`, `m.user_id IN (${placeholders})`];
-    const binds = [...visibleIds];
+    // 候选动态：若指定 userId 则只取该用户；否则取所有人（再按可见性过滤）
+    const filters = [`m.deleted_at IS NULL`, `u.deleted_at IS NULL`];
+    const binds = [];
+    if (targetUserId) {
+      filters.push('m.user_id = ?');
+      binds.push(targetUserId);
+    }
     if (before) {
       filters.push('m.id < ?');
       binds.push(Number(before));
     }
-    binds.push(limit);
+    // 多取一些，因为可见性过滤会在 JS 里做
+    binds.push(Math.min(limit * 4, 200));
 
-    const { results } = await c.env.DB.prepare(
-      `SELECT m.id, m.user_id, m.content, m.image_keys, m.created_at,
+    const { results: rows } = await c.env.DB.prepare(
+      `SELECT m.id, m.user_id, m.content, m.image_keys, m.visibility, m.created_at,
               u.username, u.display_name, u.chat_id, u.avatar_key
        FROM moments m
        JOIN users u ON u.id = m.user_id
@@ -84,6 +90,19 @@ export function registerMomentRoutes(app) {
     )
       .bind(...binds)
       .all();
+
+    // 按可见性过滤：private 仅作者本人；friends 仅作者本人或好友；public 所有人
+    const results = [];
+    for (const row of rows) {
+      const authorId = Number(row.user_id);
+      if (blockedIds.has(authorId)) continue;
+      const vis = row.visibility || 'public';
+      const isMine = authorId === session.userId;
+      if (vis === 'private' && !isMine) continue;
+      if (vis === 'friends' && !isMine && !friendIdSet.has(authorId)) continue;
+      results.push(row);
+      if (results.length >= limit) break;
+    }
 
     const moments = [];
     for (const row of results) {
@@ -117,6 +136,7 @@ export function registerMomentRoutes(app) {
         content: row.content,
         imageKeys,
         imageUrls: imageKeys.map((k) => publicFileUrl(k)),
+        visibility: row.visibility || 'public',
         createdAt: row.created_at,
         author: mapMomentAuthor(row),
         isMine: Number(row.user_id) === session.userId,
