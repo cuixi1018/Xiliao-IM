@@ -572,11 +572,15 @@ async function confirmDeactivate() {
 
 <style scoped>
 .settings-page {
-  height: 100vh;
+  min-height: 100vh;
+  height: auto;
+  box-sizing: border-box;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 40px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
 }
 
