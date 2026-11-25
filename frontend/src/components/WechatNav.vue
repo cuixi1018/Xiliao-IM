@@ -114,7 +114,43 @@ function logout() {
 .wx-nav__btn--me :deep(.ui-avatar) { border-radius: 6px; }
 .wx-nav__btn--logout { color: #7a7a7a; }
 @media (max-width: 768px) {
-  .wx-nav { width: 56px; }
-  .wx-nav__btn { width: 52px; }
+  /* 移动端：微信式底部导航栏 */
+  .wx-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 58px;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    padding: 0;
+    background: #ffffff;
+    border-top: 1px solid #e5e5e5;
+    z-index: 100;
+  }
+  .wx-nav__top,
+  .wx-nav__bottom {
+    flex-direction: row;
+    gap: 0;
+    width: auto;
+    height: 100%;
+  }
+  .wx-nav__top { flex: 3; }
+  .wx-nav__bottom { flex: 1; justify-content: center; }
+  .wx-nav__btn {
+    width: auto;
+    flex: 1;
+    height: 100%;
+    padding: 6px 0;
+    color: #7a7a7a;
+    border-radius: 0;
+  }
+  .wx-nav__btn svg { width: 22px; height: 22px; }
+  .wx-nav__btn--active { color: #07c160; }
+  /* 移动端隐藏「我的头像/退出登录」，这两个入口放在设置页 */
+  .wx-nav__btn--me,
+  .wx-nav__btn--logout { display: none; }
 }
 </style>

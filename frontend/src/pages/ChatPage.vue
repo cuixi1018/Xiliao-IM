@@ -1889,13 +1889,17 @@ onBeforeUnmount(() => {
     width: 100vw;
     overflow: hidden;
   }
+  /* 移动端保留微信导航栏（组件内部已改为底部 tab bar），仅不占横向宽度 */
   .wx-nav {
-    display: none;
+    flex-basis: auto;
   }
   .left-sidebar {
     width: 100%;
     flex-basis: 100%;
     border-right: none;
+    /* 给底部导航栏留出空间 */
+    padding-bottom: 58px;
+    box-sizing: border-box;
   }
   .right-sidebar {
     display: none;
@@ -1903,6 +1907,8 @@ onBeforeUnmount(() => {
   .chat-main {
     display: none;
     width: 100%;
+    padding-bottom: 58px; /* 给底部导航栏留出空间 */
+    box-sizing: border-box;
   }
   /* 打开会话后：隐藏列表，显示聊天窗口 */
   .chat-layout.has-active-room .left-sidebar {
