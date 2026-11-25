@@ -129,6 +129,19 @@ async function forceSetting(key, value) {
 }
 
 async function main() {
+  // [临时诊断] 查询注册站 Pages 环境变量，定位 client_id 缺失原因
+  try {
+    const pr = await fetch(`${API_BASE_URL}/accounts/${accountId}/pages/projects/xl-register`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const pj = await pr.json();
+    const vars = pj?.result?.deployment_config?.env_vars || [];
+    console.log("[diag reg env] production vars:", JSON.stringify((vars.production || []).map((v) => ({ name: v.name, value: v.value ? String(v.value).slice(0, 8) + '...' : v.value }))));
+    console.log("[diag reg env] preview vars:", JSON.stringify((vars.preview || []).map((v) => ({ name: v.name }))));
+  } catch (e) {
+    console.log("[diag reg env] failed:", e.message);
+  }
+
   console.log("Applying idempotent schema migrations to D1...");
 
   // 1) 用户列
