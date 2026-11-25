@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS moments (
   user_id INTEGER NOT NULL,
   content TEXT NOT NULL DEFAULT '',
   image_keys TEXT NOT NULL DEFAULT '[]',
+  visibility TEXT NOT NULL DEFAULT 'public',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   deleted_at TEXT,
   FOREIGN KEY (user_id) REFERENCES users(id)
