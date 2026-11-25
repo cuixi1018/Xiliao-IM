@@ -15,6 +15,8 @@ const user = ref(null);
 const error = ref('');
 const info = ref('');
 const note = ref('');
+const remark = ref('');
+const addExpanded = ref(false);
 const submitting = ref(false);
 
 const targetId = computed(() => Number(route.params.id));
@@ -45,7 +47,7 @@ async function sendAdd() {
   if (!user.value) return;
   submitting.value = true;
   try {
-    await api.addFriend({ userId: user.value.id, note: note.value.trim() });
+    await api.addFriend({ userId: user.value.id, note: note.value.trim(), remark: remark.value.trim() });
     user.value.relationStatus = 'pending';
     user.value.relationDirection = 'outgoing';
     msg('好友申请已发送');
@@ -68,6 +70,11 @@ async function respond(accept) {
   } finally {
     submitting.value = false;
   }
+}
+
+function viewMoments() {
+  if (!user.value) return;
+  router.push(`/moments?userId=${user.value.id}`);
 }
 
 function copyChatId() {
@@ -131,6 +138,14 @@ const genderLabel = computed(() => {
           <div class="profile-row"><span class="row-label">个性签名</span><span class="row-value">{{ user.signature || '这个人很懒，什么都没留下' }}</span></div>
         </section>
 
+        <section class="profile-section profile-links">
+          <button type="button" class="profile-link" @click="viewMoments">
+            <span class="link-icon">◎</span>
+            <span class="link-label">朋友圈</span>
+            <span class="link-arrow">›</span>
+          </button>
+        </section>
+
         <section v-if="!isSelf" class="profile-actions">
           <template v-if="user.isFriend">
             <button type="button" class="btn-primary" @click="chatWith">发消息</button>
@@ -149,13 +164,23 @@ const genderLabel = computed(() => {
             <button type="button" class="btn-secondary" disabled>无法添加该用户</button>
           </template>
           <template v-else>
-            <label class="note-field">
-              <span>验证消息（可选）</span>
-              <input v-model="note" type="text" maxlength="100" placeholder="我是…" />
-            </label>
-            <button type="button" class="btn-primary" :disabled="submitting" @click="sendAdd">
-              {{ submitting ? '发送中' : '申请添加好友' }}
-            </button>
+            <template v-if="!addExpanded">
+              <button type="button" class="btn-primary" @click="addExpanded = true">去添加</button>
+            </template>
+            <template v-else>
+              <label class="note-field">
+                <span>备注（给对方起的名字，可选）</span>
+                <input v-model="remark" type="text" maxlength="60" placeholder="例如：张三" />
+              </label>
+              <label class="note-field">
+                <span>验证消息（可选）</span>
+                <input v-model="note" type="text" maxlength="100" placeholder="我是…" />
+              </label>
+              <button type="button" class="btn-primary" :disabled="submitting" @click="sendAdd">
+                {{ submitting ? '发送中' : '发送好友申请' }}
+              </button>
+              <button type="button" class="cancel-add" @click="addExpanded = false">取消</button>
+            </template>
           </template>
         </section>
       </template>
@@ -198,5 +223,11 @@ const genderLabel = computed(() => {
 .btn-primary { background: #07c160; color: #fff; }
 .btn-secondary { background: #f2f2f2; color: #555; }
 .btn-primary:disabled, .btn-secondary:disabled { opacity: 0.6; cursor: not-allowed; }
+.profile-links { padding: 0 16px; }
+.profile-link { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 0; border: none; background: none; font-size: 14px; color: #191919; cursor: pointer; text-align: left; }
+.link-icon { font-size: 18px; color: #07c160; }
+.link-label { flex: 1; }
+.link-arrow { color: #c8c8c8; font-size: 20px; }
+.cancel-add { display: block; width: 100%; margin-top: 10px; padding: 10px; border: none; background: none; color: #999; font-size: 13px; cursor: pointer; }
 @media (min-width: 768px) { .profile-page { max-width: 520px; margin: 0 auto; } }
 </style>
