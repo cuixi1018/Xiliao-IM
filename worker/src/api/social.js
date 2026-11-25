@@ -65,14 +65,15 @@ export function registerSocialRoutes(app) {
 
     const [friendsResult, incomingResult, outgoingResult] = await Promise.all([
       c.env.DB.prepare(
-        `SELECT u.id, u.username, u.display_name, u.chat_id, u.avatar_key
+        `SELECT u.id, u.username, u.display_name, u.chat_id, u.avatar_key,
+                u.signature, u.friend_verify_required, f.remark
          FROM friendships f
          JOIN users u
            ON u.id = CASE WHEN f.requester_id = ? THEN f.addressee_id ELSE f.requester_id END
          WHERE f.status = 'accepted'
            AND (f.requester_id = ? OR f.addressee_id = ?)
            AND u.deleted_at IS NULL
-         ORDER BY u.display_name ASC`
+         ORDER BY COALESCE(NULLIF(f.remark, ''), u.display_name) ASC`
       )
         .bind(me, me, me)
         .all(),
@@ -101,7 +102,10 @@ export function registerSocialRoutes(app) {
     ]);
 
     return c.json({
-      friends: friendsResult.results.map(mapUserRow),
+      friends: friendsResult.results.map((row) => ({
+        ...mapUserRow(row),
+        remarkName: row.remark || ''
+      })),
       incoming: incomingResult.results.map((row) => ({ ...mapUserRow(row), requestId: Number(row.request_id), note: row.note || '', createdAt: row.created_at })),
       outgoing: outgoingResult.results.map((row) => ({ ...mapUserRow(row), requestId: Number(row.request_id), note: row.note || '', createdAt: row.created_at }))
     });
@@ -160,6 +164,7 @@ export function registerSocialRoutes(app) {
     const session = c.get('session');
     const payload = await parseJsonRequest(c.req.raw);
     const note = String(payload.note || '').trim().slice(0, 100);
+    const remark = String(payload.remark || '').trim().slice(0, 60);
     const targetId = Number(payload.userId);
 
     let targetRow = null;
@@ -194,10 +199,10 @@ export function registerSocialRoutes(app) {
     // 对方未开启好友验证 → 直接成为好友并发送默认消息
     if (!Number(targetRow.friend_verify_required)) {
       await c.env.DB.prepare(
-        `INSERT OR IGNORE INTO friendships (requester_id, addressee_id, status, note)
-         VALUES (?, ?, 'accepted', ?)`
+        `INSERT OR IGNORE INTO friendships (requester_id, addressee_id, status, note, remark)
+         VALUES (?, ?, 'accepted', ?, ?)`
       )
-        .bind(session.userId, targetUserId, note)
+        .bind(session.userId, targetUserId, note, remark)
         .run();
       await sendFriendWelcomeMessage(c.env.DB, session.userId, targetUserId, session.displayName);
       return c.json({ ok: true, accepted: true, direct: true });
@@ -222,12 +227,12 @@ export function registerSocialRoutes(app) {
 
     try {
       await c.env.DB.prepare(
-        `INSERT INTO friendships (requester_id, addressee_id, status, note)
-         VALUES (?, ?, 'pending', ?)
+        `INSERT INTO friendships (requester_id, addressee_id, status, note, remark)
+         VALUES (?, ?, 'pending', ?, ?)
          ON CONFLICT(requester_id, addressee_id) DO UPDATE
-         SET note = excluded.note, updated_at = CURRENT_TIMESTAMP`
+         SET note = excluded.note, remark = excluded.remark, updated_at = CURRENT_TIMESTAMP`
       )
-        .bind(session.userId, targetUserId, note)
+        .bind(session.userId, targetUserId, note, remark)
         .run();
     } catch (error) {
       return errorResponse('发送申请失败，请稍后重试', 500);
