@@ -33,7 +33,15 @@ async function submit() {
   error.value = '';
   try {
     await api.registerWithInvite(token.value, form);
-    router.push({ name: 'login', query: { registered: '1' } });
+    // 注册完成后自动登录
+    try {
+      const sessionPayload = await api.login({ username: form.username, password: form.password });
+      store.login(sessionPayload);
+      router.push('/');
+    } catch {
+      // 自动登录失败则回登录页，让用户手动登录
+      router.push({ name: 'login', query: { registered: '1' } });
+    }
   } catch (e) {
     error.value = e.message;
   } finally {
