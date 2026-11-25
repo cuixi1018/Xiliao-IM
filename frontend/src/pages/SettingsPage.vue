@@ -3,7 +3,6 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../api.js';
 import store from '../store.js';
-import { clearStoredToken } from '../auth-storage.js';
 import UiAvatar from '../components/ui/Avatar.vue';
 import QRCode from 'qrcode';
 
@@ -328,8 +327,7 @@ async function confirmDeactivate() {
   try {
     await api.deactivateAccount();
     deactivateDialogOpen.value = false;
-    clearStoredToken();
-    store.session = null;
+    await store.logout();
     router.replace('/login');
   } catch (currentError) {
     error.value = currentError.message;
@@ -338,10 +336,9 @@ async function confirmDeactivate() {
   }
 }
 
-function logout() {
+async function logout() {
   if (!window.confirm('确定退出登录吗？')) return;
-  clearStoredToken();
-  store.session = null;
+  await store.logout();
   router.replace('/login');
 }
 </script>
@@ -474,6 +471,12 @@ function logout() {
             <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
           </svg>
           通讯录 / 黑名单
+        </button>
+        <button type="button" class="nav-link" @click="router.push('/moments')">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
+          </svg>
+          朋友圈
         </button>
         <button
           v-if="showAdminEntry"
