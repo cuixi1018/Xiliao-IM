@@ -337,6 +337,13 @@ async function confirmDeactivate() {
     deactivating.value = false;
   }
 }
+
+function logout() {
+  if (!window.confirm('确定退出登录吗？')) return;
+  clearStoredToken();
+  store.session = null;
+  router.replace('/login');
+}
 </script>
 
 <template>
@@ -449,6 +456,7 @@ async function confirmDeactivate() {
           <button type="button" class="save-btn" :disabled="savingPassword" @click="changePassword">
             {{ savingPassword ? '更新中' : '更新密码' }}
           </button>
+          <button type="button" class="logout-btn" @click="logout">退出登录</button>
           <button type="button" class="deactivate-link" @click="openDeactivateDialog">注销账号</button>
           <p class="deactivate-hint">注销后将退出所有群聊、清空聊天记录，并通知你的好友。此操作不可恢复。</p>
         </section>
@@ -572,14 +580,15 @@ async function confirmDeactivate() {
 
 <style scoped>
 .settings-page {
-  min-height: 100vh;
-  height: auto;
+  height: 100vh;
+  height: 100dvh;
   box-sizing: border-box;
   display: flex;
   align-items: flex-start;
   justify-content: center;
   padding: 40px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
 }
@@ -1062,7 +1071,7 @@ async function confirmDeactivate() {
 
 @media (max-width: 640px) {
   .settings-page {
-    padding: 16px;
+    padding: 16px 16px calc(72px + env(safe-area-inset-bottom));
   }
 
   .settings-container {
@@ -1118,7 +1127,7 @@ async function confirmDeactivate() {
 .save-btn:hover:not(:disabled), .crop-confirm:hover { background: #06ad56; }
 .field-select { width: 100%; padding: 10px 12px; border: 1px solid var(--border, #d8dee4); border-radius: 8px; font-size: 14px; background: #fff; box-sizing: border-box; }
 .sp-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.sp-dialog { width: 360px; max-width: 92vw; background: #fff; border-radius: 14px; padding: 22px; text-align: center; }
+.sp-dialog { width: 360px; max-width: 92vw; max-height: 86dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; background: #fff; border-radius: 14px; padding: 22px; text-align: center; }
 .sp-dialog h3 { margin: 0 0 6px; font-size: 17px; color: #191919; }
 .sp-sub { margin: 0 0 14px; font-size: 12px; color: #888; line-height: 1.5; }
 .qr-image { width: 240px; height: 240px; image-rendering: pixelated; }
@@ -1130,6 +1139,8 @@ async function confirmDeactivate() {
 .sp-btn.primary { background: #07c160; border-color: #07c160; color: #fff; }
 .sp-btn.danger { background: #e64340; border-color: #e64340; color: #fff; }
 .sp-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.logout-btn { display: block; width: 100%; margin-top: 16px; padding: 11px; border: 1px solid #ddd; border-radius: 8px; background: #fff; color: #576b95; font-size: 14px; cursor: pointer; }
+.logout-btn:hover { background: #f7f7f7; }
 .deactivate-link { display: inline-block; margin-top: 16px; padding: 0; border: none; background: none; color: #e64340; font-size: 13px; cursor: pointer; text-decoration: underline; }
 .deactivate-hint { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: #999; }
 </style>
