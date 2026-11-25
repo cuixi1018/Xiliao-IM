@@ -238,6 +238,9 @@ export default {
       method: 'DELETE'
     });
   },
+  deactivateAccount() {
+    return request('/me/deactivate', { method: 'POST' });
+  },
   adminChannels() {
     return request('/admin/channels');
   },

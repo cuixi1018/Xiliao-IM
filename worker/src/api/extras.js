@@ -1,6 +1,7 @@
 import { errorResponse, parseJsonRequest } from '../utils.js';
 import { areFriends } from './social.js';
 import { getSession, putSession } from '../auth.js';
+import { deactivateUserAccount } from '../db.js';
 
 function mapUserBrief(row) {
   return {
@@ -150,11 +151,32 @@ export function registerExtraRoutes(app) {
       .all();
     const r = row.results[0];
     if (!r) return errorResponse('用户不存在', 404);
+
+    const friend = await areFriends(c.env.DB, session.userId, targetId);
+    const { results: rel } = await c.env.DB.prepare(
+      `SELECT id, status, requester_id FROM friendships
+       WHERE (requester_id = ? AND addressee_id = ?)
+          OR (requester_id = ? AND addressee_id = ?)
+       LIMIT 1`
+    )
+      .bind(session.userId, targetId, targetId, session.userId)
+      .all();
+    const blocked = await c.env.DB.prepare(
+      `SELECT 1 FROM blacklist WHERE user_id = ? AND blocked_user_id = ? LIMIT 1`
+    )
+      .bind(targetId, session.userId)
+      .all();
+
     return c.json({
       user: {
         ...mapUserBrief(r),
         myRemark: r.my_remark || '',
-        displayInGroup: r.my_remark || r.display_name
+        displayInGroup: r.my_remark || r.display_name,
+        isFriend: friend,
+        relationStatus: rel[0]?.status || '',
+        relationDirection: rel[0] ? (Number(rel[0].requester_id) === session.userId ? 'outgoing' : 'incoming') : '',
+        relationRequestId: rel[0] ? Number(rel[0].id) : null,
+        blockedByThem: Boolean(blocked.results[0])
       }
     });
   });
@@ -246,5 +268,15 @@ export function registerExtraRoutes(app) {
       .run();
 
     return c.json({ ok: true, announcement });
+  });
+
+  // ===== 注销账号：退出所有群聊 + 清空聊天记录 + 提醒好友 =====
+  app.post('/api/me/deactivate', async (c) => {
+    const session = c.get('session');
+    if (!session || !session.userId) {
+      return errorResponse('请先登录', 401);
+    }
+    const result = await deactivateUserAccount(c.env.DB, session.userId);
+    return c.json({ ok: true, ...result });
   });
 }

@@ -592,3 +592,74 @@ export async function ensureDmChannel(db, actorId, targetUserId) {
     dm_key: dmKey
   };
 }
+
+// ===== 注销账号：退出所有群聊 + 清空聊天记录 + 提醒好友 + 软删除 =====
+// 供用户自助注销和管理员删除共用。返回被通知的好友数量。
+export async function deactivateUserAccount(db, userId) {
+  const uid = Number(userId);
+
+  // 1. 先取好友列表（accepted），用于后续通知
+  const friendsResult = await db.prepare(
+    `SELECT u.id, u.display_name
+     FROM friendships f
+     JOIN users u
+       ON u.id = CASE WHEN f.requester_id = ? THEN f.addressee_id ELSE f.requester_id END
+     WHERE f.status = 'accepted'
+       AND (f.requester_id = ? OR f.addressee_id = ?)
+       AND u.deleted_at IS NULL`
+  ).bind(uid, uid, uid).all();
+  const friends = friendsResult.results || [];
+
+  // 2. 退出所有群聊/私聊：移除该用户的成员关系
+  await db.prepare(`DELETE FROM channel_members WHERE user_id = ?`).bind(uid).run();
+
+  // 3. 清空该用户发送的全部聊天记录
+  await db.prepare(`DELETE FROM messages WHERE sender_id = ?`).bind(uid).run();
+
+  // 4. 清理引用，避免外键/脏数据
+  await db.batch([
+    db.prepare(`UPDATE channels SET created_by = NULL WHERE created_by = ?`).bind(uid),
+    db.prepare(`UPDATE channel_members SET invited_by = NULL WHERE invited_by = ?`).bind(uid),
+    db.prepare(`UPDATE registration_invites SET created_by = NULL WHERE created_by = ?`).bind(uid),
+    db.prepare(`UPDATE registration_invites SET consumed_by_user_id = NULL WHERE consumed_by_user_id = ?`).bind(uid),
+    db.prepare(`DELETE FROM friendships WHERE requester_id = ? OR addressee_id = ?`).bind(uid, uid),
+    db.prepare(`DELETE FROM blacklist WHERE user_id = ? OR blocked_user_id = ?`).bind(uid, uid),
+    db.prepare(`DELETE FROM oauth_mappings WHERE xlim_user_id = ?`).bind(uid),
+    db.prepare(`DELETE FROM message_reads WHERE user_id = ?`).bind(uid),
+    db.prepare(`DELETE FROM channel_clear_points WHERE user_id = ?`).bind(uid),
+    db.prepare(`DELETE FROM message_delete_points WHERE user_id = ?`).bind(uid)
+  ]);
+
+  // 5. 给每位好友的私聊会话写一条系统提醒消息
+  let notified = 0;
+  for (const friend of friends) {
+    try {
+      const dm = await ensureDmChannel(db, uid, Number(friend.id));
+      await insertMessage(db, {
+        channelId: Number(dm.id),
+        senderId: uid,
+        content: '我已注销账号，之后可能无法再联系，感谢陪伴。',
+        kind: 'system'
+      });
+      notified += 1;
+    } catch {
+      // 单条通知失败不影响注销主流程
+    }
+  }
+
+  // 6. ensureDmChannel 会把注销者重新加入私聊，这里再清一次成员关系，
+  //    确保退出所有群聊/私聊彻底（好友侧仍能通过自己的成员关系看到提醒消息）
+  await db.prepare(`DELETE FROM channel_members WHERE user_id = ?`).bind(uid).run();
+
+  // 7. 软删除用户本体（沿用 GC 机制，之后物理清理）
+  await db.prepare(
+    `UPDATE users
+     SET deleted_at = CURRENT_TIMESTAMP,
+         is_disabled = 1,
+         session_version = session_version + 1,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  ).bind(uid).run();
+
+  return { notifiedFriends: notified };
+}

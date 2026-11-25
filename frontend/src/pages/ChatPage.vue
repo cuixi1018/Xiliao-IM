@@ -403,6 +403,18 @@ function saveGroupQr() {
   a.click();
 }
 
+// ===== 查看个人主页 =====
+function openProfile(userId) {
+  if (!userId) return;
+  closeMsgMenu();
+  router.push(`/profile/${userId}`);
+}
+function viewMessageSenderProfile() {
+  const msg = msgMenu.message;
+  if (!msg?.sender?.id) return;
+  openProfile(msg.sender.id);
+}
+
 // ===== 投诉用户 =====
 const complaintReasons = ['色情低俗', '诈骗或广告', '辱骂人身攻击', '骚扰他人', '发布违法信息', '其他'];
 const complaintOpen = ref(false);
@@ -898,6 +910,7 @@ onBeforeUnmount(() => {
       <button v-if="canDelete(msgMenu.message)" type="button" class="danger" @click="doDeleteMsg">🗑️ 删除</button>
       <button type="button" @click="doQuote">💬 引用</button>
       <button v-if="canForward(msgMenu.message)" type="button" @click="openForward">➡️ 转发</button>
+      <button v-if="msgMenu.message?.sender?.id && msgMenu.message.sender.id !== session?.userId" type="button" @click="viewMessageSenderProfile">👤 查看资料</button>
       <button v-if="msgMenu.message?.sender?.id && msgMenu.message.sender.id !== session?.userId" type="button" class="danger" @click="complainMessageSender">⚠️ 投诉用户</button>
     </div>
     <div v-if="msgMenu.show" class="msg-menu-backdrop" @click="closeMsgMenu" @contextmenu.prevent="closeMsgMenu"></div>
@@ -955,8 +968,10 @@ onBeforeUnmount(() => {
               <label>群成员（{{ groupManage.members.length }}）</label>
               <div class="gm-members">
                 <div v-for="m in groupManage.members" :key="m.id" class="gm-member">
-                  <UiAvatar :src="m.avatarUrl" :fallback="(m.displayInGroup||m.displayName)?.[0] || '?'" size="sm" />
-                  <span class="gm-member-name">{{ m.displayInGroup || m.displayName }}</span>
+                  <button type="button" class="gm-member-profile" @click="openProfile(m.id)" :title="`查看「${m.displayInGroup || m.displayName}」的资料`">
+                    <UiAvatar :src="m.avatarUrl" :fallback="(m.displayInGroup||m.displayName)?.[0] || '?'" size="sm" />
+                    <span class="gm-member-name">{{ m.displayInGroup || m.displayName }}</span>
+                  </button>
                   <span v-if="m.role === 'owner'" class="gm-owner-tag">群主</span>
                   <button v-if="m.id !== session?.userId" type="button" class="gm-report" @click="openComplaint(m.id, m.displayInGroup || m.displayName)">投诉</button>
                   <button v-if="m.role !== 'owner'" type="button" class="gm-kick" @click="kickMember(m)">移出</button>
@@ -1853,6 +1868,8 @@ onBeforeUnmount(() => {
 .gm-members { max-height: 180px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; }
 .gm-member { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #f4f4f4; }
 .gm-member:last-child { border-bottom: none; }
+.gm-member-profile { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 0; border: none; background: none; cursor: pointer; text-align: left; }
+.gm-member-profile:hover .gm-member-name { color: #07c160; }
 .gm-member-name { flex: 1; font-size: 13px; color: #191919; }
 .gm-owner-tag { font-size: 11px; color: #07c160; background: #eaf8ef; padding: 2px 8px; border-radius: 10px; }
 .gm-kick { border: none; background: transparent; color: #fa5151; font-size: 12px; cursor: pointer; }

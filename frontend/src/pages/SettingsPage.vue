@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../api.js';
 import store from '../store.js';
+import { clearStoredToken } from '../auth-storage.js';
 import UiAvatar from '../components/ui/Avatar.vue';
 import QRCode from 'qrcode';
 
@@ -307,6 +308,35 @@ async function changePassword() {
     savingPassword.value = false;
   }
 }
+
+// ===== 注销账号 =====
+const deactivateDialogOpen = ref(false);
+const deactivating = ref(false);
+const deactivateConfirmText = ref('');
+function openDeactivateDialog() {
+  deactivateConfirmText.value = '';
+  error.value = '';
+  deactivateDialogOpen.value = true;
+}
+async function confirmDeactivate() {
+  if (deactivateConfirmText.value.trim() !== '注销账号') {
+    error.value = '请输入「注销账号」以确认';
+    return;
+  }
+  deactivating.value = true;
+  error.value = '';
+  try {
+    await api.deactivateAccount();
+    deactivateDialogOpen.value = false;
+    clearStoredToken();
+    store.session = null;
+    router.replace('/login');
+  } catch (currentError) {
+    error.value = currentError.message;
+  } finally {
+    deactivating.value = false;
+  }
+}
 </script>
 
 <template>
@@ -419,6 +449,8 @@ async function changePassword() {
           <button type="button" class="save-btn" :disabled="savingPassword" @click="changePassword">
             {{ savingPassword ? '更新中' : '更新密码' }}
           </button>
+          <button type="button" class="deactivate-link" @click="openDeactivateDialog">注销账号</button>
+          <p class="deactivate-hint">注销后将退出所有群聊、清空聊天记录，并通知你的好友。此操作不可恢复。</p>
         </section>
       </div>
 
@@ -514,6 +546,23 @@ async function changePassword() {
           <div class="sp-actions">
             <button type="button" class="sp-btn" @click="showChatIdDialog = false">取消</button>
             <button type="button" class="sp-btn primary" :disabled="changingChatId" @click="changeChatId">保存</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 注销账号确认弹窗 -->
+    <Transition name="modal-fade">
+      <div v-if="deactivateDialogOpen" class="sp-overlay" @click.self="deactivateDialogOpen = false">
+        <div class="sp-dialog">
+          <h3>注销账号</h3>
+          <p class="sp-sub">注销后你将退出所有群聊、清空聊天记录，并通知好友。此操作不可恢复，请谨慎。</p>
+          <input v-model="deactivateConfirmText" class="sp-input" placeholder="请输入：注销账号" />
+          <div class="sp-actions">
+            <button type="button" class="sp-btn" @click="deactivateDialogOpen = false">取消</button>
+            <button type="button" class="sp-btn danger" :disabled="deactivating" @click="confirmDeactivate">
+              {{ deactivating ? '注销中' : '确认注销' }}
+            </button>
           </div>
         </div>
       </div>
@@ -1075,4 +1124,8 @@ async function changePassword() {
 .sp-actions { display: flex; gap: 8px; margin-top: 18px; justify-content: center; }
 .sp-btn { padding: 9px 20px; border: 1px solid #ddd; border-radius: 8px; background: #fff; color: #555; font-size: 13px; cursor: pointer; }
 .sp-btn.primary { background: #07c160; border-color: #07c160; color: #fff; }
+.sp-btn.danger { background: #e64340; border-color: #e64340; color: #fff; }
+.sp-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.deactivate-link { display: inline-block; margin-top: 16px; padding: 0; border: none; background: none; color: #e64340; font-size: 13px; cursor: pointer; text-decoration: underline; }
+.deactivate-hint { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: #999; }
 </style>

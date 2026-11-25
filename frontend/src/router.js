@@ -13,6 +13,7 @@ import AdminSitePage from './pages/AdminSitePage.vue';
 import AdminComplaintsPage from './pages/AdminComplaintsPage.vue';
 import AdminRoomPage from './pages/AdminRoomPage.vue';
 import SettingsPage from './pages/SettingsPage.vue';
+import ProfilePage from './pages/ProfilePage.vue';
 import JoinGroupPage from './pages/JoinGroupPage.vue';
 import { addAuthInvalidListener } from './auth-storage.js';
 
@@ -100,6 +101,12 @@ const router = createRouter({
       path: '/settings',
       name: 'settings',
       component: SettingsPage,
+      meta: { transition: 'page' }
+    },
+    {
+      path: '/profile/:id',
+      name: 'profile',
+      component: ProfilePage,
       meta: { transition: 'page' }
     },
     {

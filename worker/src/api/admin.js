@@ -1,5 +1,5 @@
 import { hashPassword } from '../auth.js';
-import { getSiteSettings, listMessages, makeUniqueChatId, requireAccessibleRoom, updateSiteSettings } from '../db.js';
+import { getSiteSettings, listMessages, makeUniqueChatId, requireAccessibleRoom, updateSiteSettings, deactivateUserAccount } from '../db.js';
 import { ApiError } from '../errors.js';
 import { errorResponse, parseJsonRequest, randomToken, sanitizeLimit } from '../utils.js';
 import { welcomeNewUser } from '../team.js';
@@ -409,18 +409,8 @@ export function registerAdminRoutes(app) {
 
   app.delete('/api/admin/users/:userId', async (c) => {
     const userId = Number(c.req.param('userId'));
-    await c.env.DB.prepare(
-      `UPDATE users
-       SET deleted_at = CURRENT_TIMESTAMP,
-            is_disabled = 1,
-            session_version = session_version + 1,
-            updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`
-    )
-      .bind(userId)
-      .run();
-
-    return c.json({ ok: true });
+    const result = await deactivateUserAccount(c.env.DB, userId);
+    return c.json({ ok: true, ...result });
   });
 
   app.get('/api/admin/messages/search', async (c) => {
