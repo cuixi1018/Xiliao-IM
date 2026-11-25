@@ -126,6 +126,26 @@ function plusAddFriend() {
   showAddFriend.value = true;
 }
 
+async function lookupUserForProfile() {
+  const chatId = addFriendChatId.value.trim();
+  if (!chatId) { error.value = '请输入对方的细聊号'; return; }
+  addFriendSubmitting.value = true;
+  error.value = '';
+  try {
+    const payload = await api.searchUsers(chatId);
+    const users = payload.users || [];
+    // 优先精确匹配细聊号，否则取第一个结果
+    const target = users.find((u) => u.chatId === chatId) || users[0];
+    if (!target) { error.value = '没有找到该用户，请检查细聊号'; return; }
+    showAddFriend.value = false;
+    router.push(`/profile/${target.id}`);
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    addFriendSubmitting.value = false;
+  }
+}
+
 const showAddFriend = ref(false);
 const addFriendChatId = ref('');
 const addFriendNote = ref('');
@@ -884,20 +904,14 @@ onBeforeUnmount(() => {
     <Transition name="modal-fade">
       <div v-if="showAddFriend" class="modal-overlay" @click.self="showAddFriend = false">
         <div class="modal-card">
-          <h3>添加好友</h3>
-          <p class="add-friend-hint">输入对方的细聊号，发送好友申请</p>
+          <h3>查找好友</h3>
+          <p class="add-friend-hint">输入对方的细聊号，查看主页后再添加</p>
           <input
             v-model="addFriendChatId"
             type="text"
             class="modal-input"
             placeholder="请输入细聊号，例如 xlofficial"
-            @keyup.enter="submitAddFriend"
-          />
-          <input
-            v-model="addFriendNote"
-            type="text"
-            class="modal-input"
-            placeholder="验证消息（选填）"
+            @keyup.enter="lookupUserForProfile"
           />
           <div class="modal-actions">
             <button type="button" class="btn-secondary" @click="showAddFriend = false">取消</button>
@@ -905,9 +919,9 @@ onBeforeUnmount(() => {
               type="button"
               class="btn-primary"
               :disabled="!addFriendChatId.trim() || addFriendSubmitting"
-              @click="submitAddFriend"
+              @click="lookupUserForProfile"
             >
-              {{ addFriendSubmitting ? '发送中...' : '发送申请' }}
+              {{ addFriendSubmitting ? '查找中...' : '查看主页' }}
             </button>
           </div>
         </div>
