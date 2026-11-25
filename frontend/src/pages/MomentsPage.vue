@@ -1,16 +1,21 @@
 <script setup>
-import { onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import api from '../api.js';
 import store from '../store.js';
 import UiAvatar from '../components/ui/Avatar.vue';
 import WechatNav from '../components/WechatNav.vue';
 
+const route = useRoute();
 const router = useRouter();
 const moments = ref([]);
 const loading = ref(false);
 const error = ref('');
 const hasMore = ref(true);
+// 查看指定用户的朋友圈（从个人主页进入）
+const viewUserId = computed(() => Number(route.query.userId || 0));
+const isViewingOther = computed(() => Boolean(viewUserId.value && viewUserId.value !== store.session?.userId));
+const pageTitle = computed(() => isViewingOther.value ? 'TA的朋友圈' : '朋友圈');
 
 // 表情
 const showEmoji = ref(''); // '' | 'compose' | 'comment'
@@ -24,6 +29,12 @@ function insertEmoji(emoji) {
 const composeOpen = ref(false);
 const composeText = ref('');
 const composeImages = ref([]); // { key, url }
+const composeVisibility = ref('public'); // public | friends | private
+const visibilityOptions = [
+  { value: 'public', label: '公开（所有人可见）' },
+  { value: 'friends', label: '仅好友可见' },
+  { value: 'private', label: '仅自己可见（私密）' }
+];
 const publishing = ref(false);
 const fileInput = ref(null);
 
@@ -41,7 +52,7 @@ async function load(reset = false) {
   loading.value = true;
   try {
     const before = !reset && moments.value.length ? moments.value[moments.value.length - 1].id : null;
-    const payload = await api.getMoments(before);
+    const payload = await api.getMoments(before, viewUserId.value || null);
     const list = payload.moments || [];
     if (reset) moments.value = list;
     else moments.value = [...moments.value, ...list];
@@ -57,6 +68,7 @@ function openCompose() {
   composeOpen.value = true;
   composeText.value = '';
   composeImages.value = [];
+  composeVisibility.value = 'public';
 }
 
 function pickImages() {
@@ -86,7 +98,8 @@ async function publish() {
   try {
     await api.createMoment({
       content: composeText.value.trim(),
-      imageKeys: composeImages.value.map((i) => i.key)
+      imageKeys: composeImages.value.map((i) => i.key),
+      visibility: composeVisibility.value
     });
     composeOpen.value = false;
     await load(true);
@@ -166,8 +179,8 @@ onMounted(() => load(true));
 
     <main class="moments-main">
       <header class="moments-header">
-        <h1>朋友圈</h1>
-        <button type="button" class="camera-btn" title="发布动态" @click="openCompose">
+        <h1>{{ pageTitle }}</h1>
+        <button v-if="!isViewingOther" type="button" class="camera-btn" title="发布动态" @click="openCompose">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#191919" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
             <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
           </svg>
@@ -175,7 +188,7 @@ onMounted(() => load(true));
       </header>
 
       <div class="moments-scroll">
-        <div class="moments-cover">
+        <div v-if="!isViewingOther" class="moments-cover">
           <UiAvatar :src="store.session?.avatarUrl" :fallback="store.session?.displayName?.[0] || '我'" size="lg" />
           <div class="cover-name">{{ store.session?.displayName }}</div>
           <div class="cover-chatid">细聊号：{{ store.session?.chatId }}</div>
@@ -255,6 +268,19 @@ onMounted(() => load(true));
             <button v-if="composeImages.length < 9" type="button" class="add-img" @click="pickImages">＋</button>
           </div>
           <input ref="fileInput" type="file" accept="image/*" multiple style="display:none" @change="onFiles" />
+          <div class="visibility-picker">
+            <span class="vp-label">谁可以看</span>
+            <div class="vp-options">
+              <button
+                v-for="opt in visibilityOptions"
+                :key="opt.value"
+                type="button"
+                class="vp-option"
+                :class="{ active: composeVisibility === opt.value }"
+                @click="composeVisibility = opt.value"
+              >{{ opt.label }}</button>
+            </div>
+          </div>
         </div>
       </div>
     </Transition>
@@ -302,7 +328,12 @@ onMounted(() => load(true));
 .load-more { display: block; margin: 16px auto; border: none; background: #fff; color: #576b95; padding: 8px 20px; border-radius: 16px; font-size: 13px; cursor: pointer; }
 .loading-hint { text-align: center; padding: 16px; color: #aaa; font-size: 12px; }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.compose-modal { width: min(520px, 92vw); background: #fff; border-radius: 12px; padding: 16px; }
+.compose-modal { width: min(520px, 92vw); max-height: 88dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; background: #fff; border-radius: 12px; padding: 16px; }
+.visibility-picker { margin-top: 14px; border-top: 1px solid #f0f0f0; padding-top: 12px; }
+.vp-label { display: block; font-size: 13px; color: #999; margin-bottom: 8px; }
+.vp-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.vp-option { border: 1px solid #ddd; border-radius: 16px; padding: 6px 12px; background: #fff; color: #666; font-size: 12px; cursor: pointer; }
+.vp-option.active { border-color: #07c160; background: #e7f8ee; color: #07c160; }
 .compose-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .compose-head button { border: none; background: transparent; color: #576b95; font-size: 14px; cursor: pointer; }
 .compose-head .publish { background: #07c160; color: #fff; padding: 6px 16px; border-radius: 6px; }
