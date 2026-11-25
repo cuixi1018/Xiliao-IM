@@ -457,6 +457,10 @@ export function registerChannelRoutes(app) {
       .bind(channelId)
       .run();
 
+    // 解散后清理成员关系与邀请码，避免已解散群仍在会话列表/扫码入口出现
+    await c.env.DB.prepare('DELETE FROM channel_members WHERE channel_id = ?').bind(channelId).run();
+    await c.env.DB.prepare('DELETE FROM channel_invite_codes WHERE channel_id = ?').bind(channelId).run();
+
     return c.json({ ok: true });
   });
 
@@ -648,6 +652,10 @@ export function registerChannelRoutes(app) {
     )
       .bind(channelId)
       .run();
+
+    // 解散后清理成员关系与邀请码，避免已解散群仍出现在任何列表
+    await c.env.DB.prepare('DELETE FROM channel_members WHERE channel_id = ?').bind(channelId).run();
+    await c.env.DB.prepare('DELETE FROM channel_invite_codes WHERE channel_id = ?').bind(channelId).run();
 
     return c.json({ ok: true });
   });

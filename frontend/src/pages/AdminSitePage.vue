@@ -133,12 +133,12 @@ async function copyInvite(invite) {
       }
     }, 1600);
   } catch {
-    error.value = '����ʧ�ܣ����ֶ���������';
+    error.value = '复制失败，请手动复制链接';
   }
 }
 
 async function revokeInvite(invite) {
-  if (!window.confirm('ȷ��ͣ�����ע��������')) {
+  if (!window.confirm('确认停用这个注册链接吗？')) {
     return;
   }
 
@@ -157,57 +157,57 @@ onMounted(loadOverview);
   <div class="admin-section">
     <header class="admin-section__header">
       <div class="admin-section__heading">
-        <h1>��վ����</h1>
-        <p>�鿴վ��ſ�����������̨����Ⱥ�鴴���������ڡ�</p>
+        <h1>网站设置</h1>
+        <p>查看站点概况，并处理后台级的群组创建与管理入口。</p>
       </div>
-      <UiButton variant="secondary" @click="loadOverview">ˢ�¸ſ�</UiButton>
+      <UiButton variant="secondary" @click="loadOverview">刷新概况</UiButton>
     </header>
 
     <div class="admin-section__body">
       <p v-if="error" class="error-text">{{ error }}</p>
-      <p v-if="loading" class="muted">վ��ſ�������...</p>
+      <p v-if="loading" class="muted">站点概况加载中...</p>
 
       <section class="admin-metric-grid admin-metric-grid--wide">
         <UiSurface class="admin-metric-card">
           <strong>{{ users.length }}</strong>
-          <span>վ���û�</span>
+          <span>站内用户</span>
         </UiSurface>
         <UiSurface class="admin-metric-card">
           <strong>{{ publicGroupCount }}</strong>
-          <span>����Ⱥ��</span>
+          <span>公开群组</span>
         </UiSurface>
         <UiSurface class="admin-metric-card">
           <strong>{{ privateGroupCount }}</strong>
-          <span>˽��Ⱥ��</span>
+          <span>私有群组</span>
         </UiSurface>
         <UiSurface class="admin-metric-card">
           <strong>{{ dms.length }}</strong>
-          <span>˽�ŻỰ</span>
+          <span>私信会话</span>
         </UiSurface>
       </section>
 
       <section class="admin-grid admin-grid--two">
         <UiSurface class="panel">
-          <h3 class="panel-title">վ�����</h3>
+          <h3 class="panel-title">站点外观</h3>
           <label class="field">
-            <span>վ������</span>
-            <input v-model.trim="siteForm.siteName" placeholder="���磺Xiliao" />
+            <span>站点名称</span>
+            <input v-model.trim="siteForm.siteName" placeholder="例如：Xiliao" />
           </label>
           <label class="field">
-            <span>վ��ͼ�� URL</span>
-            <input v-model.trim="siteForm.siteIconUrl" placeholder="/files/... �� https://..." />
+            <span>站点图标 URL</span>
+            <input v-model.trim="siteForm.siteIconUrl" placeholder="/files/... 或 https://..." />
           </label>
           <label class="field field--checkbox">
             <input type="checkbox" v-model="siteForm.allowRegistration" />
-            <span>����ע�ᣨ��¼ҳ��ʾע����ڣ�</span>
+            <span>开放注册（登录页显示注册入口）</span>
           </label>
           <label class="field field--checkbox">
             <input type="checkbox" v-model="siteForm.autoDeleteLargeFiles" />
-            <span>�Զ����� 10 ��ǰ�Ĵ��ļ�����ʡ�洢�ռ䣩</span>
+            <span>自动清理 10 天前的大文件（节省存储空间）</span>
           </label>
           <label class="field">
-            <span>���ļ���ֵ��MB��</span>
-            <input type="number" min="1" v-model.number="largeFileMb" placeholder="Ĭ�� 10 MB" />
+            <span>大文件阈值（MB）</span>
+            <input type="number" min="1" v-model.number="largeFileMb" placeholder="默认 10 MB" />
           </label>
           <div class="inline-actions">
             <input
@@ -218,10 +218,10 @@ onMounted(loadOverview);
               @change="uploadSiteIcon"
             />
             <UiButton variant="secondary" size="sm" :disabled="iconUploading" @click="openIconPicker">
-              {{ iconUploading ? '�ϴ���...' : '�ϴ�ͼ��' }}
+              {{ iconUploading ? '上传中...' : '上传图标' }}
             </UiButton>
             <UiButton :disabled="savingSite" @click="saveSiteSettings">
-              {{ savingSite ? '������...' : '��������' }}
+              {{ savingSite ? '保存中...' : '保存设置' }}
             </UiButton>
           </div>
           <div class="admin-site-preview">
@@ -234,23 +234,23 @@ onMounted(loadOverview);
             </div>
             <div class="admin-site-preview__meta">
               <strong>{{ siteForm.siteName || 'Xiliao' }}</strong>
-              <span>{{ siteForm.siteIconUrl || 'δ����ͼ�� URL' }}</span>
+              <span>{{ siteForm.siteIconUrl || '未设置图标 URL' }}</span>
             </div>
           </div>
         </UiSurface>
 
         <UiSurface class="panel">
-          <h3 class="panel-title">ע������</h3>
+          <h3 class="panel-title">注册链接</h3>
           <label class="field">
-            <span>���ӱ�ע</span>
-            <input v-model.trim="inviteForm.note" placeholder="���磺�����³�Ա���" />
+            <span>链接备注</span>
+            <input v-model.trim="inviteForm.note" placeholder="例如：四月新成员入口" />
           </label>
           <UiButton block :disabled="inviteSubmitting" @click="createInvite">
-            {{ inviteSubmitting ? '������...' : '����һ����ע������' }}
+            {{ inviteSubmitting ? '创建中...' : '创建一次性注册链接' }}
           </UiButton>
 
           <div class="invite-list">
-            <div v-if="!invites.length" class="muted">��û��ע�����ӡ�</div>
+            <div v-if="!invites.length" class="muted">还没有注册链接。</div>
             <UiSurface
               v-for="invite in invites"
               :key="invite.id"
@@ -259,14 +259,14 @@ onMounted(loadOverview);
             >
               <div class="admin-invite-card__head">
                 <div>
-                  <strong>{{ invite.note || 'δ����ע������' }}</strong>
+                  <strong>{{ invite.note || '未命名注册链接' }}</strong>
                   <p>
-                    {{ invite.isAvailable ? '���ã��� 1 ��ע��' : invite.deletedAt ? '��ͣ��' : '��ʹ��' }}
+                    {{ invite.isAvailable ? '可用，限 1 人注册' : invite.deletedAt ? '已停用' : '已使用' }}
                   </p>
                 </div>
                 <div class="inline-actions">
                   <UiButton variant="secondary" size="sm" @click="copyInvite(invite)">
-                    {{ copiedInviteId === invite.id ? '�Ѹ���' : '��������' }}
+                    {{ copiedInviteId === invite.id ? '已复制' : '复制链接' }}
                   </UiButton>
                   <UiButton
                     v-if="invite.isAvailable"
@@ -274,42 +274,42 @@ onMounted(loadOverview);
                     size="sm"
                     @click="revokeInvite(invite)"
                   >
-                    ͣ��
+                    停用
                   </UiButton>
                 </div>
               </div>
               <div class="admin-invite-card__url">{{ inviteLinkUrl(invite.token) }}</div>
               <div class="admin-invite-card__meta">
-                <span>�����ߣ�{{ invite.creatorDisplayName }}</span>
-                <span>����ʱ�䣺{{ new Date(invite.createdAt).toLocaleString() }}</span>
-                <span v-if="invite.consumerDisplayName">ʹ���ߣ�{{ invite.consumerDisplayName }}</span>
+                <span>创建者：{{ invite.creatorDisplayName }}</span>
+                <span>创建时间：{{ new Date(invite.createdAt).toLocaleString() }}</span>
+                <span v-if="invite.consumerDisplayName">使用者：{{ invite.consumerDisplayName }}</span>
               </div>
             </UiSurface>
           </div>
         </UiSurface>
 
         <UiSurface class="panel">
-          <h3 class="panel-title">��̨���˵��</h3>
+          <h3 class="panel-title">后台入口说明</h3>
           <div class="admin-notes-grid">
             <div class="admin-note">
-              <strong>�û�����</strong>
-              <span>�����˺��������ڣ��������������á�ɾ�ź��������á�</span>
+              <strong>用户管理</strong>
+              <span>负责账号生命周期，包括创建、禁用、删号和密码重置。</span>
             </div>
             <div class="admin-note">
-              <strong>��Ϣ�鿴</strong>
-              <span>����ȫվ��Ϣ�������Լ�������Ⱥ���˽�ŵ������Ի���</span>
+              <strong>消息查看</strong>
+              <span>负责全站消息检索，以及打开任意群组和私信的完整对话。</span>
             </div>
             <div class="admin-note">
-              <strong>��վ����</strong>
-              <span>�����̨��������ں�ƽ̨���иſ������ٻ�����ϢѲ�������</span>
+              <strong>网站设置</strong>
+              <span>负责后台级配置入口和平台运行概况，不再混入消息巡检操作。</span>
             </div>
           </div>
           <div class="inline-actions">
             <UiButton variant="secondary" size="sm" @click="router.push('/admin/users')">
-              ȥ�û�����
+              去用户管理
             </UiButton>
             <UiButton variant="secondary" size="sm" @click="router.push('/admin/messages')">
-              ȥ��Ϣ�鿴
+              去消息查看
             </UiButton>
           </div>
         </UiSurface>
