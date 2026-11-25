@@ -216,10 +216,14 @@ async function main() {
       user_id INTEGER NOT NULL,
       content TEXT NOT NULL DEFAULT '',
       image_keys TEXT NOT NULL DEFAULT '[]',
+      visibility TEXT NOT NULL DEFAULT 'public',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       deleted_at TEXT
     )`,
   );
+
+  // 兼容：旧 moments 表可能没有 visibility 列
+  await addColumn("moments", "visibility", "TEXT NOT NULL DEFAULT 'public'");
 
   await createTable(
     "moment_likes",
