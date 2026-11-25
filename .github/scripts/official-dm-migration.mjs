@@ -75,6 +75,13 @@ if (!databaseId) {
   console.log('解析数据库 id:', databaseId, db.name);
 }
 
+// 幂等保护：迁移完成后写入标记，避免每次部署都重置官方账号密码
+const doneFlag = await query("SELECT setting_value FROM site_settings WHERE setting_key='official_dm_migrated'");
+if (doneFlag?.results?.[0]) {
+  console.log('迁移已完成（标记存在），跳过');
+  process.exit(0);
+}
+
 const NEW_PWD = 'Xiliao@2026';
 const { salt, hash } = await hashPassword(NEW_PWD);
 console.log('官方账号新密码已生成:', NEW_PWD);
@@ -154,4 +161,7 @@ const vCh = await query('SELECT id,name,kind FROM channels ORDER BY id');
 console.log('最终 channels:', JSON.stringify(vCh?.results));
 const vOff = await query('SELECT id,username,is_disabled,deleted_at FROM users WHERE id=?', [officialId]);
 console.log('最终官方账号:', JSON.stringify(vOff?.results));
+
+// 写入完成标记
+await query("INSERT OR REPLACE INTO site_settings (setting_key,setting_value) VALUES ('official_dm_migrated','1')");
 console.log('迁移完成 ✅');
