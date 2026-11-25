@@ -3,28 +3,16 @@ import { randomToken } from './utils.js';
 
 const TEAM_CHAT_ID = 'xlofficial';
 const TEAM_NAME = '细聊团队';
-const WELCOME_MESSAGE = '欢迎来到细聊 🎉 这里是「细聊团队」官方群，公告与新功能会第一时间在这里发布。祝你聊天愉快！';
-
-async function getSetting(db, key) {
-  const row = await db.prepare(
-    'SELECT setting_value FROM site_settings WHERE setting_key = ? LIMIT 1'
-  ).bind(key).all();
-  return row.results[0]?.setting_value || '';
-}
-
-async function setSetting(db, key, value) {
-  await db.prepare(
-    `INSERT INTO site_settings (setting_key, setting_value, updated_at)
-     VALUES (?, ?, CURRENT_TIMESTAMP)
-     ON CONFLICT(setting_key) DO UPDATE
-     SET setting_value = excluded.setting_value, updated_at = CURRENT_TIMESTAMP`
-  ).bind(key, String(value)).run();
-}
+const WELCOME_MESSAGES = [
+  `你好，我是「${TEAM_NAME}」官方助手 👋 很高兴认识你！`,
+  '这里是我们的一对一聊天窗口，我会在这里通知你新功能、系统公告和重要提醒。',
+  '有任何问题或建议，都可以直接在这里留言，我们会尽快回复。祝你在细聊玩得开心 🎉'
+];
 
 // 找到或创建官方账号（细聊号 xlofficial）
 async function ensureOfficialUser(db) {
   const found = await db.prepare(
-    `SELECT id FROM users WHERE chat_id = ? LIMIT 1`
+    `SELECT id FROM users WHERE chat_id = ? AND deleted_at IS NULL LIMIT 1`
   ).bind(TEAM_CHAT_ID).all();
   if (found.results[0]) return Number(found.results[0].id);
 
@@ -38,67 +26,38 @@ async function ensureOfficialUser(db) {
   return Number(result.meta.last_row_id);
 }
 
-// 确保"细聊团队"官方群存在，返回 channel id
-export async function ensureOfficialTeam(env) {
-  const db = env.DB;
-  let channelId = Number(await getSetting(db, 'official_team_channel_id'));
-  if (channelId) {
-    const exists = await db.prepare(
-      'SELECT id FROM channels WHERE id = ? AND deleted_at IS NULL LIMIT 1'
-    ).bind(channelId).all();
-    if (exists.results[0]) return channelId;
-  }
-
-  const ownerId = await ensureOfficialUser(db);
-
-  const existing = await db.prepare(
-    `SELECT id FROM channels WHERE name = ? AND kind = 'public' AND deleted_at IS NULL LIMIT 1`
-  ).bind(TEAM_NAME).all();
-  if (existing.results[0]) {
-    channelId = Number(existing.results[0].id);
-    await setSetting(db, 'official_team_channel_id', channelId);
-    return channelId;
-  }
-
-  const created = await db.prepare(
-    `INSERT INTO channels (name, description, kind, created_by, announcement, announcement_at)
-     VALUES (?, ?, 'public', ?, ?, CURRENT_TIMESTAMP)`
-  )
-    .bind(TEAM_NAME, '细聊官方团队群，公告与新功能第一时间发布。', ownerId, '欢迎来到细聊团队，请遵守社区规范，友好交流。')
-    .run();
-  channelId = Number(created.meta.last_row_id);
-
-  await db.prepare(
-    `INSERT OR IGNORE INTO channel_members (channel_id, user_id, role, invited_by)
-     VALUES (?, ?, 'owner', ?)`
-  ).bind(channelId, ownerId, ownerId).run();
-
-  await setSetting(db, 'official_team_channel_id', channelId);
-  return channelId;
+// 兼容旧调用：官方私聊模式下不再需要官方群，返回 null
+export async function ensureOfficialTeam() {
+  return null;
 }
 
-// 新用户注册后：加入官方群 + 发送欢迎系统消息
+// 新用户注册后：自动加官方账号为好友 + 建立私聊 + 官方发送欢迎消息
 export async function welcomeNewUser(env, userId, displayName) {
   try {
-    const teamId = await ensureOfficialTeam(env);
-    // 加入官方群（若已在则忽略）
-    await env.DB.prepare(
-      `INSERT OR IGNORE INTO channel_members (channel_id, user_id, role, invited_by)
-       VALUES (?, ?, 'member', ?)`
-    ).bind(teamId, userId, null).run();
+    const db = env.DB;
+    const officialId = await ensureOfficialUser(db);
+    const uid = Number(userId);
+    if (!officialId || officialId === uid) return;
 
-    // 欢迎消息：用系统账号(sender=官方 owner)发送，kind=system
-    const owner = await env.DB.prepare(
-      `SELECT user_id FROM channel_members WHERE channel_id = ? AND role = 'owner' LIMIT 1`
-    ).bind(teamId).all();
-    const senderId = owner.results[0]?.user_id || userId;
-    const { insertMessage } = await import('./db.js');
-    await insertMessage(env.DB, {
-      channelId: teamId,
-      senderId,
-      content: `${displayName}，${WELCOME_MESSAGE}`,
-      kind: 'system'
-    });
+    // 1) 自动建立好友关系（官方账号为请求方，直接 accepted）
+    await db.prepare(
+      `INSERT OR IGNORE INTO friendships (requester_id, addressee_id, status, note)
+       VALUES (?, ?, 'accepted', ?)`
+    ).bind(officialId, uid, '欢迎使用细聊').run();
+
+    // 2) 建立官方账号与新用户的私聊会话
+    const { ensureDmChannel, insertMessage } = await import('./db.js');
+    const dm = await ensureDmChannel(db, officialId, uid);
+
+    // 3) 官方账号发送欢迎消息（系统消息）
+    for (const content of WELCOME_MESSAGES) {
+      await insertMessage(db, {
+        channelId: Number(dm.id),
+        senderId: officialId,
+        content,
+        kind: 'system'
+      });
+    }
   } catch (error) {
     console.error('welcomeNewUser failed:', error);
     // 欢迎流程失败不影响注册本身
