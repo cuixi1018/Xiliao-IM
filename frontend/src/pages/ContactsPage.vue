@@ -61,6 +61,11 @@ async function doSearch() {
   }
 }
 
+function openProfile(user) {
+  if (!user?.id) return;
+  router.push(`/profile/${user.id}`);
+}
+
 async function sendAdd(user) {
   try {
     await api.addFriend({ userId: user.id, note: addForm.note });
@@ -204,20 +209,18 @@ onMounted(() => {
       <div v-if="searchOpen" class="search-box">
         <input v-model="keyword" placeholder="输入细聊号 / 用户名搜索" @keyup.enter="doSearch" />
         <button type="button" @click="doSearch">{{ searching ? '搜索中' : '搜索' }}</button>
-        <input v-model="addForm.note" class="note-input" placeholder="验证消息（选填）" />
         <div v-if="searchResults.length" class="search-results">
           <div v-for="u in searchResults" :key="u.id" class="search-row">
-            <UiAvatar :src="u.avatarUrl" :fallback="u.displayName?.[0] || '?'" size="sm" />
-            <div class="row-main">
-              <strong>{{ u.displayName }}</strong>
-              <small>细聊号：{{ u.chatId }}</small>
-            </div>
-            <button
-              v-if="!u.isFriend && u.relationStatus !== 'pending'"
-              type="button" class="mini-btn" @click="sendAdd(u)"
-            >添加</button>
-            <span v-else-if="u.isFriend" class="tag">已是好友</span>
+            <button type="button" class="search-row-main" @click="openProfile(u)">
+              <UiAvatar :src="u.avatarUrl" :fallback="u.displayName?.[0] || '?'" size="sm" />
+              <span class="row-main">
+                <strong>{{ u.displayName }}</strong>
+                <small>细聊号：{{ u.chatId }}</small>
+              </span>
+            </button>
+            <span v-if="u.isFriend" class="tag">已是好友</span>
             <span v-else-if="u.relationStatus === 'pending'" class="tag">已发送</span>
+            <span v-else class="tag">点击查看详情</span>
           </div>
         </div>
         <p v-else-if="keyword && !searching" class="hint">没有找到匹配的用户</p>
@@ -350,6 +353,7 @@ onMounted(() => {
 .search-results { max-height: 240px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; }
 .search-row, .person-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
 .search-row { border-bottom: 1px solid #f4f4f4; }
+.search-row-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: none; background: none; padding: 0; cursor: pointer; text-align: left; }
 .row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .row-main strong { font-size: 14px; color: #191919; }
 .row-main small { font-size: 11px; color: #9a9a9a; }
