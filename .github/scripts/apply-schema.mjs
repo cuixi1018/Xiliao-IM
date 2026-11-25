@@ -163,7 +163,8 @@ async function main() {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      console.log("[reg oauth] PATCH env vars status:", patch.status);
+      const patchBody = await patch.text();
+      console.log("[reg oauth] PATCH env vars status:", patch.status, "body:", patchBody.slice(0, 400));
       // 触发重新部署使环境变量生效
       const dep = await fetch(`${projUrl}/deployments`, {
         method: "POST",
