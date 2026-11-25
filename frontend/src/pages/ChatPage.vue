@@ -409,6 +409,14 @@ function openProfile(userId) {
   closeMsgMenu();
   router.push(`/profile/${userId}`);
 }
+function viewActiveRoomProfile() {
+  showMoreMenu.value = false;
+  if (activeRoom.value?.kind === 'dm' && activeRoom.value.otherUser?.id) {
+    openProfile(activeRoom.value.otherUser.id);
+  } else if (activeRoom.value && activeRoom.value.kind !== 'dm') {
+    openGroupManage();
+  }
+}
 function viewMessageSenderProfile() {
   const msg = msgMenu.message;
   if (!msg?.sender?.id) return;
@@ -729,10 +737,12 @@ onBeforeUnmount(() => {
           <button type="button" class="chat-back-btn" title="返回" @click="backToList">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <h2>{{ roomLabel(activeRoom) }}</h2>
+          <h2 :class="{ 'chat-header__title-link': activeRoom.kind === 'dm' }" @click="activeRoom.kind === 'dm' && viewActiveRoomProfile()">{{ roomLabel(activeRoom) }}</h2>
           <div class="chat-header__status" :class="wsConnected ? 'online' : 'offline'"></div>
+          <button type="button" class="chat-header__profile" title="查看资料" @click="viewActiveRoomProfile">👤</button>
           <button type="button" class="chat-header__more" title="更多" @click="showMoreMenu = !showMoreMenu">⋯</button>
           <div v-if="showMoreMenu" class="more-menu">
+            <button type="button" @click="viewActiveRoomProfile">{{ activeRoom.kind === 'dm' ? '查看资料' : '查看成员' }}</button>
             <button v-if="canManageGroup()" type="button" @click="openGroupManage">群管理</button>
             <button v-if="activeRoom.kind !== 'dm'" type="button" @click="leaveGroup">退出群聊</button>
             <button type="button" @click="clearHistory">清空聊天记录</button>
@@ -1495,10 +1505,12 @@ onBeforeUnmount(() => {
   margin-top: auto;
   margin-bottom: 0;
   padding: 10px 16px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   background: #f0f2f5;
   border-top: 1px solid #e9edef;
   position: relative;
   z-index: 2;
+  flex-shrink: 0;
   margin-left: 0;
   margin-right: 0;
   border-radius: 0;
@@ -1780,7 +1792,10 @@ onBeforeUnmount(() => {
 }
 
 /* 微信风格新增组件 */
-.chat-header__more { margin-left: auto; border: none; background: transparent; color: #54656f; font-size: 24px; line-height: 1; cursor: pointer; padding: 0 8px; }
+.chat-header__more { border: none; background: transparent; color: #54656f; font-size: 24px; line-height: 1; cursor: pointer; padding: 0 8px; }
+.chat-header__profile { border: none; background: transparent; color: #54656f; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 6px; margin-left: auto; }
+.chat-header__title-link { cursor: pointer; }
+.chat-header__title-link:hover { color: #07c160; }
 .chat-header { position: relative; }
 .more-menu { position: absolute; top: 44px; right: 12px; z-index: 15; background: #fff; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); padding: 6px 0; min-width: 140px; }
 .more-menu button { display: block; width: 100%; text-align: left; padding: 10px 16px; border: none; background: transparent; font-size: 13px; color: #333; cursor: pointer; }
