@@ -127,6 +127,12 @@ export default {
     return state.site;
   },
   initialize,
+  setToken(token) {
+    setStoredToken(token);
+    state.token = String(token || '').trim();
+    state.session = null;
+    state.ready = false;
+  },
   login,
   logout,
   setSession,
