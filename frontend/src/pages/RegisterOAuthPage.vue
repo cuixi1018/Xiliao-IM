@@ -63,12 +63,21 @@ async function submit() {
   submitting.value = true;
   error.value = '';
   try {
-    const result = await api.regRegister({
+    await api.regRegister({
       tempToken: tempToken.value,
       username: form.username.trim(),
       password: form.password,
       displayName: form.displayName.trim() || form.username.trim()
     });
+    // 注册完成后自动登录
+    try {
+      const sessionPayload = await api.login({ username: form.username.trim(), password: form.password });
+      store.login(sessionPayload);
+      router.push('/');
+      return;
+    } catch {
+      // 自动登录失败则展示成功页，让用户手动登录
+    }
     success.value = true;
     error.value = '';
   } catch (e) {
