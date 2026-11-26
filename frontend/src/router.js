@@ -15,6 +15,7 @@ import AdminRoomPage from './pages/AdminRoomPage.vue';
 import SettingsPage from './pages/SettingsPage.vue';
 import ProfilePage from './pages/ProfilePage.vue';
 import JoinGroupPage from './pages/JoinGroupPage.vue';
+import AuthBridgePage from './pages/AuthBridgePage.vue';
 import { addAuthInvalidListener } from './auth-storage.js';
 
 const router = createRouter({
@@ -25,6 +26,12 @@ const router = createRouter({
       name: 'login',
       component: LoginPage,
       meta: { public: true, transition: 'page' }
+    },
+    {
+      path: '/auth',
+      name: 'auth-bridge',
+      component: AuthBridgePage,
+      meta: { public: true }
     },
     {
       path: '/register/:token',
