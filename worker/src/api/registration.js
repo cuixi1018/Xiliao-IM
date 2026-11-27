@@ -21,10 +21,10 @@ export function registerRegistrationRoutes(app) {
     }
     const baseUrl = String(c.env.AUTH_ENDPOINT || 'https://auth.cuixi.qzz.io').replace(/\/$/, '');
     return c.json({
-      clientId: String(c.env.CLIENT_ID || ''),
+      clientId: String(c.env.CLIENT_ID || 'c_XYlCgovCFVUt'),
       authEndpoint: `${baseUrl}/oauth/authorize`,
-      redirectUri: String(c.env.REDIRECT_URI || ''),
-      scope: 'basic'
+      redirectUri: String(c.env.REDIRECT_URI || 'https://xl.cuixi.qzz.io/register-oauth'),
+      scope: 'profile'
     });
   });
 
@@ -38,9 +38,9 @@ export function registerRegistrationRoutes(app) {
       return errorResponse('缺少授权码', 400);
     }
 
-    const clientId = String(c.env.CLIENT_ID || '');
-    const clientSecret = String(c.env.CLIENT_SECRET || '');
-    const redirectUri = String(c.env.REDIRECT_URI || '');
+    const clientId = String(c.env.CLIENT_ID || 'c_XYlCgovCFVUt');
+    const clientSecret = String(c.env.CLIENT_SECRET || 's_hM9ykAWQUmsXSea3JtpTS7CIyN4YEXnt2j4JGYGz');
+    const redirectUri = String(c.env.REDIRECT_URI || 'https://xl.cuixi.qzz.io/register-oauth');
     const tokenEndpoint = String(c.env.TOKEN_ENDPOINT || 'https://xi-auth.pages.dev/oauth/token');
     const userinfoEndpoint = String(c.env.USERINFO_ENDPOINT || 'https://xi-auth.pages.dev/oauth/userinfo');
 
