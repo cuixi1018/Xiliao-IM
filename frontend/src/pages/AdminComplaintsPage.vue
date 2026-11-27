@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue';
 import api from '../api.js';
+import { formatFullTime } from '../time-utils.js';
 import UiSurface from '../components/ui/Surface.vue';
 import UiButton from '../components/ui/Button.vue';
 
@@ -52,7 +53,7 @@ onMounted(load);
         <div v-for="c in complaints" :key="c.id" class="ac-item">
           <div class="ac-item__head">
             <strong>{{ c.reason }}</strong>
-            <span class="ac-time">{{ new Date(c.createdAt).toLocaleString() }}</span>
+            <span class="ac-time">{{ formatFullTime(c.createdAt) }}</span>
           </div>
           <div class="ac-item__body">
             <div class="ac-party">
