@@ -189,7 +189,20 @@ export function registerRegistrationRoutes(app) {
 
     const result = await createXiliaoUser(c, { xiSub, username, password, displayName });
     if (result instanceof Response) return result;
-    if (result.ok) await c.env.OAUTH_TEMP.delete(tempToken);
+    if (result.ok) {
+      await c.env.OAUTH_TEMP.delete(tempToken);
+      // 直接用唯一标识(sub)签发会话，前端无需再用可变账号名+密码二次登录
+      const row = await c.env.DB.prepare(
+        'SELECT * FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1'
+      )
+        .bind(result.user.id)
+        .all();
+      const userRow = row.results[0];
+      if (userRow) {
+        const session = await createSession(c.env, userRow);
+        return c.json({ ...result, xiSub, token: session.token, session });
+      }
+    }
     return c.json(result);
   });
 
@@ -218,7 +231,25 @@ export function registerRegistrationRoutes(app) {
 
     const result = await createXiliaoUser(c, { xiSub, username, password, displayName });
     if (result instanceof Response) return result;
-    return c.json(result);
+
+    // 注册成功后直接用唯一标识(sub)签发会话，免二次用户名/密码登录。
+    // 这样即使熙熙账号名或邮箱变更，只要 sub 不变就能登录。
+    const row = await c.env.DB.prepare(
+      'SELECT * FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1'
+    )
+      .bind(result.user.id)
+      .all();
+    const userRow = row.results[0];
+    if (!userRow) {
+      return errorResponse('账号创建成功但状态异常，请联系管理员', 500);
+    }
+    const session = await createSession(c.env, userRow);
+    return c.json({
+      ...result,
+      xiSub,
+      token: session.token,
+      session
+    });
   });
 
   // 二合一：按熙熙账号唯一标识查绑定。
@@ -267,6 +298,7 @@ export function registerRegistrationRoutes(app) {
     const session = await createSession(c.env, row);
     return c.json({
       bound: true,
+      xiSub,
       token: session.token,
       session,
       user: {
