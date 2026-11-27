@@ -2,6 +2,7 @@ import { computed, nextTick, ref, watch } from "vue";
 import api from "../api.js";
 import { dispatchAuthInvalid } from "../auth-storage.js";
 import { connectRoomSocket } from "../ws.js";
+import { formatRelativeTime as formatRelativeTimeUtil } from "../time-utils.js";
 
 const WS_CLOSE_UNAUTHORIZED = 4401;
 const WS_CLOSE_FORBIDDEN = 4403;
@@ -89,7 +90,7 @@ export function useChatRoom({
 	);
 
 	function formatTime(value) {
-		return new Date(value).toLocaleString();
+		return formatRelativeTimeUtil(value);
 	}
 
 	function isOwnMessage(message) {
