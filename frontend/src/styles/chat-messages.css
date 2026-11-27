@@ -12,6 +12,25 @@
   gap: 16px;
 }
 
+/* 日期分隔条：居中，与消息明显区分 */
+.chat-day-divider {
+  display: flex;
+  justify-content: center;
+  margin: 6px 0 2px;
+  pointer-events: none;
+}
+
+.chat-day-divider span {
+  padding: 4px 14px;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--text-faint);
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(62, 49, 32, 0.04);
+}
+
 .chat-bubble-row {
   display: flex;
   align-items: flex-end;
