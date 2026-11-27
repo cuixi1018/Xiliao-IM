@@ -13,6 +13,7 @@ const error = ref('');
 const success = ref(false);
 const userInfo = ref(null);
 const tempToken = ref('');
+const expectSub = ref(''); // 唯一用户标识，用于核验防串号
 const form = reactive({ username: '', password: '', displayName: '' });
 
 function showError(text) {
@@ -58,6 +59,11 @@ onMounted(async () => {
     const data = await api.regExchange(code);
     tempToken.value = data.tempToken;
     userInfo.value = data.userinfo;
+    expectSub.value = String(data.userinfo?.sub || '');
+    if (!expectSub.value) {
+      showError('授权信息缺少唯一标识，请重新授权');
+      return;
+    }
     form.username = data.userinfo?.username || '';
     form.displayName = data.userinfo?.username || '';
     loading.value = false;
@@ -73,13 +79,25 @@ async function submit() {
   submitting.value = true;
   error.value = '';
   try {
-    await api.regRegister({
+    const result = await api.regRegister({
       tempToken: tempToken.value,
       username: form.username.trim(),
       password: form.password,
       displayName: form.displayName.trim() || form.username.trim()
     });
-    // 注册完成后自动登录
+    // 唯一标识核验：返回的 sub 必须与本次授权拿到的 sub 一致，防串号
+    if (result && result.xiSub && expectSub.value && result.xiSub !== expectSub.value) {
+      showError('账号身份核验失败（唯一标识不一致），请重新授权');
+      return;
+    }
+    // 主站已按唯一标识(sub)签发会话，直接用 token 登录，不依赖可变账号名+密码
+    if (result && result.token) {
+      store.setToken(result.token);
+      await store.initialize();
+      router.push('/');
+      return;
+    }
+    // 兼容兜底：老接口未返回 token 时用账号名+密码登录
     try {
       const sessionPayload = await api.login({ username: form.username.trim(), password: form.password });
       store.login(sessionPayload);
@@ -110,7 +128,7 @@ async function submit() {
       <template v-else-if="ready && !success">
         <div class="info-box">
           <strong>✅ 熙熙账号已验证</strong>
-          <span v-if="userInfo">{{ userInfo.username }} · {{ userInfo.email || '未设置邮箱' }}</span>
+          <span v-if="expectSub">唯一标识：{{ expectSub.slice(0, 8) }}… · 改名或改邮箱不影响登录</span>
         </div>
         <label>细聊用户名<input v-model="form.username" placeholder="登录用的用户名" /></label>
         <label>设置密码（至少6位）<input v-model="form.password" type="password" placeholder="输入密码" /></label>
