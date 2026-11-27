@@ -77,11 +77,11 @@ export async function putSession(env, session) {
 export async function createSession(env, user) {
   const token = toBase64Url(crypto.getRandomValues(new Uint8Array(32)));
 
-  // 兼容历史用户：若尚无细聊号，登录时即时补一个并写回
+  // 兼容历史用户：若尚无细聊号，登录时即时补一个并写回（查重，保证全局唯一）
   let chatId = user.chat_id || '';
   if (!chatId) {
-    const { generateChatId } = await import('./utils.js');
-    chatId = generateChatId(user.username);
+    const { makeUniqueChatId } = await import('./db.js');
+    chatId = await makeUniqueChatId(env.DB, user.username);
     await env.DB.prepare(
       `UPDATE users SET chat_id = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND (chat_id IS NULL OR chat_id = '')`
