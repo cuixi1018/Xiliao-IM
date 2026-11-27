@@ -301,7 +301,7 @@ function addFromSearch(user) {
 
 // ===== 初次注册欢迎弹窗 =====
 const showWelcome = ref(false);
-const welcomeText = computed(() => `欢迎来到细聊，${session.value?.displayName || ''}！\n\n你已自动加入「细聊团队」官方群（细聊号 xlofficial），公告与新功能会第一时间发布。\n\n你的细聊号是 ${session.value?.chatId || ''}，别人可以用它搜索并添加你为好友。`);
+const welcomeText = computed(() => `欢迎来到细聊，${session.value?.displayName || ''}！\n\n我们已自动为你添加「细聊团队」官方账号为好友（细聊号 xlofficial），公告与新功能会第一时间通过私聊通知你。\n\n你的细聊号是 ${session.value?.chatId || ''}，别人可以用它搜索并添加你为好友。`);
 async function checkWelcome() {
   if (session.value?.isNewUser) {
     showWelcome.value = true;
