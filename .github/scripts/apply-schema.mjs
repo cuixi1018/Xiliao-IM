@@ -306,7 +306,30 @@ async function main() {
   //    用 official_dm_migrated 标记保证幂等（密码只重置一次）。
   await applyOfficialDmMigration();
 
+  // 8) 官方账号头像：幂等地补全 logo（不依赖历史迁移标志，每次部署都执行）
+  await applyOfficialAvatar();
+
   console.log(`Done. Applied ${applied} schema change(s).`);
+}
+
+// 给官方账号（细聊团队）补上 logo 头像，复用站点 logo 文件 key。
+// 幂等：只更新 chat_id='xlofficial' 且头像缺失的记录。
+async function applyOfficialAvatar() {
+  const AVATAR_KEY = "1/1783947696765-d3e3be16-81b7-470a-a7b8-8ac1657413c0.png";
+  const rows = await query("SELECT id, avatar_key FROM users WHERE chat_id='xlofficial' AND deleted_at IS NULL LIMIT 1");
+  if (rows.length === 0) {
+    console.log("[official-avatar] official user not found, skip");
+    return;
+  }
+  if (rows[0].avatar_key) {
+    console.log("[official-avatar] already set, skip");
+    return;
+  }
+  await query(
+    "UPDATE users SET avatar_key=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+    [AVATAR_KEY, Number(rows[0].id)],
+  );
+  console.log("[official-avatar] logo avatar applied to official user");
 }
 
 async function applyOfficialDmMigration() {
