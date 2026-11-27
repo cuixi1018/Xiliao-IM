@@ -42,8 +42,36 @@ export function useChatRoom({
 	let roomSocket = null;
 	let roomSocketKey = "";
 	let socketConnectToken = 0;
+	let reconnectTimer = null;
+	let reconnectAttempts = 0;
+	const RECONNECT_BASE_DELAY = 800; // 首次重连延迟(ms)
+	const RECONNECT_MAX_DELAY = 15000; // 重连延迟上限(ms)
 	const intentionallyClosingSockets = new WeakSet();
 	const deferredCloseSockets = new Set();
+
+	// 断线后自动重连（带退避），避免网络抖动/切后台后永久卡在"connection not ready"
+	function scheduleReconnect() {
+		if (reconnectTimer) return;
+		if (!activeRoom.value) return;
+		const delay = Math.min(
+			RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts),
+			RECONNECT_MAX_DELAY,
+		);
+		reconnectAttempts += 1;
+		reconnectTimer = setTimeout(() => {
+			reconnectTimer = null;
+			if (!activeRoom.value) return;
+			if (roomSocket && roomSocket.readyState === WebSocket.OPEN) return;
+			connectSocket();
+		}, delay);
+	}
+
+	function clearReconnect() {
+		if (reconnectTimer) {
+			clearTimeout(reconnectTimer);
+			reconnectTimer = null;
+		}
+	}
 
 	const availableInviteUsers = computed(() => {
 		const memberIds = new Set(
@@ -244,6 +272,8 @@ export function useChatRoom({
 
 	function disconnectSocket() {
 		socketConnectToken += 1;
+		clearReconnect();
+		reconnectAttempts = 0;
 		flushDeferredSockets();
 		if (roomSocket) {
 			markSocketForClose(roomSocket);
@@ -301,6 +331,8 @@ export function useChatRoom({
 					roomSocket = socket;
 					roomSocketKey = nextRoomKey;
 					wsStatus.value = "open";
+					reconnectAttempts = 0; // 连上后重置退避计数
+					clearReconnect();
 					flushDeferredSockets(socket);
 					return;
 				}
@@ -313,11 +345,25 @@ export function useChatRoom({
 					}
 					wsStatus.value = "closed";
 					handleSocketClose(event);
+					// 授权失效/房间权限被撤销不重连，其余断开一律尝试重连
+					const code = Number(event?.code || 0);
+					const reason = String(event?.reason || "");
+					const noReconnect =
+						code === WS_CLOSE_UNAUTHORIZED || reason === WS_REASON_UNAUTHORIZED ||
+						code === WS_CLOSE_FORBIDDEN || reason === WS_REASON_FORBIDDEN;
+					if (!noReconnect) scheduleReconnect();
 					return;
 				}
 
 				if (status === "error") {
 					flushDeferredSockets(socket);
+					if (event.socket === roomSocket) {
+						roomSocket = null;
+						roomSocketKey = "";
+					}
+					wsStatus.value = "error";
+					scheduleReconnect();
+					return;
 				}
 
 				wsStatus.value = status;
@@ -359,7 +405,9 @@ export function useChatRoom({
 			roomSocket.readyState !== WebSocket.OPEN ||
 			roomSocketKey !== activeRoomKey
 		) {
-			error.value = "Real-time connection is not ready. Please try again in a moment.";
+			// 连接未就绪：主动尝试重连，并给出友好提示
+			if (activeRoom.value) connectSocket();
+			error.value = "连接尚未就绪，正在重新连接，请稍后再发送。";
 			return;
 		}
 
