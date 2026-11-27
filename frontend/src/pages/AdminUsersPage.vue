@@ -1,6 +1,7 @@
 ﻿<script setup>
 import { computed, onMounted, reactive, ref } from 'vue';
 import api from '../api.js';
+import { formatFullTime } from '../time-utils.js';
 import UiButton from '../components/ui/Button.vue';
 import UiSurface from '../components/ui/Surface.vue';
 
@@ -242,7 +243,7 @@ onMounted(loadUsers);
               <div class="admin-invite-card__url">{{ inviteLinkUrl(invite.token) }}</div>
               <div class="admin-invite-card__meta">
                 <span>创建者：{{ invite.creatorDisplayName }}</span>
-                <span>创建时间：{{ new Date(invite.createdAt).toLocaleString() }}</span>
+                <span>创建时间：{{ formatFullTime(invite.createdAt) }}</span>
                 <span v-if="invite.consumerDisplayName">使用者：{{ invite.consumerDisplayName }}</span>
               </div>
             </UiSurface>
@@ -280,7 +281,7 @@ onMounted(loadUsers);
                   <span v-else-if="user.bannedUntil && new Date(user.bannedUntil) > new Date()" class="ban-tag">封禁至 {{ new Date(user.bannedUntil).toLocaleString() }}</span>
                   <span v-else>{{ user.isDisabled ? '已禁用' : '正常' }}</span>
                 </td>
-                <td>{{ new Date(user.createdAt).toLocaleString() }}</td>
+                <td>{{ formatFullTime(user.createdAt) }}</td>
                 <td>
                   <div class="inline-actions">
                     <UiButton variant="secondary" size="sm" @click="toggleUser(user)">
