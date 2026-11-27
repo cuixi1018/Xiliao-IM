@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../api.js';
 import store from '../store.js';
+import { formatFullTime } from '../time-utils.js';
 import MessageAttachment from '../components/chat/MessageAttachment.vue';
 import UiAvatar from '../components/ui/Avatar.vue';
 import UiBadge from '../components/ui/Badge.vue';
@@ -22,7 +23,7 @@ const title = computed(() => route.query.title || room.value?.name || '会话详
 const session = computed(() => store.session);
 
 function formatTime(value) {
-  return new Date(value).toLocaleString();
+  return formatFullTime(value);
 }
 
 function isOwnMessage(message) {
