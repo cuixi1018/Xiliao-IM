@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '../api.js';
 import store from '../store.js';
+import { formatRelativeTime } from '../time-utils.js';
 import UiAvatar from '../components/ui/Avatar.vue';
 import WechatNav from '../components/WechatNav.vue';
 
@@ -161,13 +162,7 @@ async function removeMoment(m) {
 }
 
 function formatTime(value) {
-  if (!value) return '';
-  const d = new Date(value);
-  const diff = Date.now() - d.getTime();
-  if (diff < 60000) return '刚刚';
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
-  return `${d.getMonth() + 1}月${d.getDate()}日`;
+  return formatRelativeTime(value);
 }
 
 onMounted(() => load(true));
