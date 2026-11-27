@@ -35,11 +35,18 @@ export function registerExtraRoutes(app) {
       return errorResponse('该细聊号已被占用', 409);
     }
 
-    await c.env.DB.prepare(
-      `UPDATE users SET chat_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-    )
-      .bind(raw, session.userId)
-      .run();
+    try {
+      await c.env.DB.prepare(
+        `UPDATE users SET chat_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+      )
+        .bind(raw, session.userId)
+        .run();
+    } catch (error) {
+      if (String(error?.message || '').includes('UNIQUE')) {
+        return errorResponse('该细聊号已被占用', 409);
+      }
+      throw error;
+    }
 
     const current = await getSession(c.env, session.token);
     if (current) {
