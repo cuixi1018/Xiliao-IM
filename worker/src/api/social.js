@@ -17,6 +17,32 @@ async function sendFriendWelcomeMessage(db, actorId, targetId, actorName) {
   }
 }
 
+// 收到好友申请时，用官方账号（细聊团队）给被申请方发一条私聊提醒
+async function notifyFriendRequestByOfficial(db, targetId, applicantName, note) {
+  try {
+    const official = await db.prepare(
+      `SELECT id FROM users WHERE chat_id = 'xlofficial' AND deleted_at IS NULL LIMIT 1`
+    ).all();
+    const officialId = Number(official.results[0]?.id || 0);
+    if (!officialId || officialId === Number(targetId)) return;
+    const dm = await ensureDmChannel(db, officialId, Number(targetId));
+    const name = String(applicantName || '有人').trim() || '有人';
+    const verify = String(note || '').trim();
+    const content = verify
+      ? `${name} 申请添加你为好友，验证消息：「${verify}」。快去通讯录的好友申请里处理吧～`
+      : `${name} 申请添加你为好友。快去通讯录的好友申请里处理吧～`;
+    await insertMessage(db, {
+      channelId: Number(dm.id),
+      senderId: officialId,
+      content,
+      kind: 'system'
+    });
+  } catch (err) {
+    console.error('notifyFriendRequestByOfficial failed:', err);
+    // 提醒失败不影响好友申请本身
+  }
+}
+
 function mapUserRow(row) {
   return {
     id: Number(row.id),
@@ -237,6 +263,9 @@ export function registerSocialRoutes(app) {
     } catch (error) {
       return errorResponse('发送申请失败，请稍后重试', 500);
     }
+
+    // 细聊团队自动私聊提醒被申请方：有人申请加好友
+    await notifyFriendRequestByOfficial(c.env.DB, targetUserId, session.displayName, note);
 
     return c.json({ ok: true });
   });
