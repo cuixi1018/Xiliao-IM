@@ -1,5 +1,6 @@
 import api from '../api.js';
 import { connectInboxSocket } from '../ws.js';
+import { showMessageNotification } from '../notify-utils.js';
 
 export function useUnreadInbox({
   activeRoom,
@@ -51,6 +52,13 @@ export function useUnreadInbox({
           roomId: payload.room.id,
           lastMessageAt: payload.createdAt,
           unreadCount: payload.unreadCount
+        });
+
+        // APP/后台系统通知提醒（页面可见时不弹，避免打扰）
+        showMessageNotification({
+          room: payload.room,
+          senderName: payload.senderName,
+          preview: payload.preview
         });
       },
       onStatus(event) {
