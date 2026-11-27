@@ -114,6 +114,59 @@ async function createIndex(name, ddl) {
   applied += 1;
 }
 
+// 确保 users.chat_id 上有真正的 UNIQUE 索引。
+// 历史库里可能已存在同名的普通(非唯一)索引，createIndex 的 IF NOT EXISTS 会跳过，
+// 导致唯一约束一直没生效、细聊号可能重复。这里主动检测并替换。
+async function ensureUniqueChatIdIndex() {
+  const name = "idx_users_chat_id";
+  const rows = await query(
+    "SELECT sql FROM sqlite_master WHERE type='index' AND name=?",
+    [name],
+  );
+  const ddl = String(rows[0]?.sql || "");
+  const isUnique = /CREATE\s+UNIQUE\s+INDEX/i.test(ddl);
+
+  if (isUnique) {
+    console.log("  = unique chat_id index already present");
+    return;
+  }
+
+  // 先清理历史重复数据：重复的细聊号按 id 保留最小者，其余重新分配唯一号
+  const dupRows = await query(
+    `SELECT chat_id, COUNT(*) AS n FROM users
+     WHERE chat_id IS NOT NULL AND chat_id <> ''
+     GROUP BY chat_id HAVING n > 1`,
+  );
+  for (const dup of dupRows) {
+    const cid = dup.chat_id;
+    const ids = await query(
+      "SELECT id, username FROM users WHERE chat_id=? ORDER BY id ASC",
+      [cid],
+    );
+    for (let i = 1; i < ids.length; i += 1) {
+      const u = ids[i];
+      let newCid = `${cid.split("#")[0] || "user"}#${Math.random().toString(36).slice(2, 8)}`;
+      let guard = 0;
+      while ((await query("SELECT 1 FROM users WHERE chat_id=? LIMIT 1", [newCid])).length && guard < 20) {
+        newCid = `${cid.split("#")[0] || "user"}#${Math.random().toString(36).slice(2, 8)}`;
+        guard += 1;
+      }
+      await query("UPDATE users SET chat_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", [newCid, Number(u.id)]);
+      console.log(`  ~ dedup chat_id for user ${u.id}: ${cid} -> ${newCid}`);
+    }
+  }
+
+  if (ddl) {
+    console.log(`  - drop legacy non-unique index ${name}`);
+    await query(`DROP INDEX IF EXISTS ${name}`);
+  }
+  console.log(`  + create unique index ${name}`);
+  await query(
+    `CREATE UNIQUE INDEX ${name} ON users(chat_id) WHERE chat_id IS NOT NULL`,
+  );
+  applied += 1;
+}
+
 async function setSetting(key, value) {
   await query(
     "INSERT OR IGNORE INTO site_settings (setting_key, setting_value) VALUES (?, ?)",
@@ -284,7 +337,7 @@ async function main() {
 
   // 5) 索引
   console.log("[indexes]");
-  await createIndex("idx_users_chat_id", "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_chat_id ON users(chat_id) WHERE chat_id IS NOT NULL");
+  await ensureUniqueChatIdIndex();
   await createIndex("idx_friendships_requester", "CREATE INDEX IF NOT EXISTS idx_friendships_requester ON friendships(requester_id, status)");
   await createIndex("idx_friendships_addressee", "CREATE INDEX IF NOT EXISTS idx_friendships_addressee ON friendships(addressee_id, status)");
   await createIndex("idx_blacklist_user", "CREATE INDEX IF NOT EXISTS idx_blacklist_user ON blacklist(user_id)");
