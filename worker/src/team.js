@@ -3,6 +3,8 @@ import { randomToken } from './utils.js';
 
 const TEAM_CHAT_ID = 'xlofficial';
 const TEAM_NAME = '细聊团队';
+// 官方账号头像：复用站点 logo 文件（files key），publicFileUrl 会拼成 /files/{key}
+const TEAM_AVATAR_KEY = '1/1783947696765-d3e3be16-81b7-470a-a7b8-8ac1657413c0.png';
 const WELCOME_MESSAGES = [
   `你好，我是「${TEAM_NAME}」官方助手 👋 很高兴认识你！`,
   '这里是我们的一对一聊天窗口，我会在这里通知你新功能、系统公告和重要提醒。',
@@ -12,16 +14,25 @@ const WELCOME_MESSAGES = [
 // 找到或创建官方账号（细聊号 xlofficial）
 async function ensureOfficialUser(db) {
   const found = await db.prepare(
-    `SELECT id FROM users WHERE chat_id = ? AND deleted_at IS NULL LIMIT 1`
+    `SELECT id, avatar_key FROM users WHERE chat_id = ? AND deleted_at IS NULL LIMIT 1`
   ).bind(TEAM_CHAT_ID).all();
-  if (found.results[0]) return Number(found.results[0].id);
+  if (found.results[0]) {
+    const id = Number(found.results[0].id);
+    // 老账号缺头像时补全，保证官方账号始终有 logo
+    if (!found.results[0].avatar_key) {
+      await db.prepare(
+        `UPDATE users SET avatar_key = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+      ).bind(TEAM_AVATAR_KEY, id).run();
+    }
+    return id;
+  }
 
   const hashed = await hashPassword(randomToken(24));
   const result = await db.prepare(
-    `INSERT INTO users (username, display_name, password_hash, password_salt, chat_id, is_disabled, is_new_user)
-     VALUES (?, ?, ?, ?, ?, 1, 0)`
+    `INSERT INTO users (username, display_name, password_hash, password_salt, chat_id, is_disabled, is_new_user, avatar_key)
+     VALUES (?, ?, ?, ?, ?, 1, 0, ?)`
   )
-    .bind(TEAM_CHAT_ID, TEAM_NAME, hashed.hash, hashed.salt, TEAM_CHAT_ID)
+    .bind(TEAM_CHAT_ID, TEAM_NAME, hashed.hash, hashed.salt, TEAM_CHAT_ID, TEAM_AVATAR_KEY)
     .run();
   return Number(result.meta.last_row_id);
 }
