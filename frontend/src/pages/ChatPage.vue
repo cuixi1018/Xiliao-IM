@@ -626,12 +626,46 @@ onMounted(() => {
 const systemMessages = computed(() => messages.value.filter((m) => m?.kind === 'system'));
 const userMessages = computed(() => messages.value.filter((m) => m?.kind !== 'system'));
 
+// D1 的 created_at 是 UTC 的 "YYYY-MM-DD HH:MM:SS"，需补 T/Z 按 UTC 解析，否则少 8 小时
+function parseMsgDate(value) {
+  const s = String(value || '');
+  const hasZone = s.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(s);
+  return new Date(s.replace(' ', 'T') + (hasZone ? '' : 'Z'));
+}
+
 function formatBubbleTime(value) {
   if (!value) return '';
-  const date = new Date(value);
+  const date = parseMsgDate(value);
+  if (Number.isNaN(date.getTime())) return '';
   const hours = String(date.getHours()).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
   return `${hours}:${minutes}`;
+}
+
+function msgDayKey(value) {
+  const d = parseMsgDate(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+// 日期分隔条：消息列表按天分组，跨天时显示“今天/昨天/M月D日”
+function isNewDay(index) {
+  if (index === 0) return true;
+  return msgDayKey(userMessages.value[index]?.createdAt) !== msgDayKey(userMessages.value[index - 1]?.createdAt);
+}
+
+function formatDayLabel(value) {
+  const d = parseMsgDate(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const now = new Date();
+  const today = msgDayKey(now.toISOString());
+  const yesterdayDate = new Date(now);
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterday = msgDayKey(yesterdayDate.toISOString());
+  const key = msgDayKey(value);
+  if (key === today) return '今天';
+  if (key === yesterday) return '昨天';
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
 onBeforeUnmount(() => {
@@ -779,32 +813,44 @@ onBeforeUnmount(() => {
               <span>{{ msg.content }}</span>
             </div>
           </template>
-          <article
-            v-for="msg in userMessages" :key="msg.id"
-            class="message-row" :class="{ 'message-row--own': isOwnMessage(msg) }"
-            @contextmenu="openMsgMenu(msg, $event)"
-            @touchstart="startLongPress(msg, $event)"
-            @touchend="cancelLongPress"
-            @touchmove="cancelLongPress"
-          >
-            <div class="message-bubble" :class="bubbleClass(msg, 0)">
-              <div v-if="activeRoom.kind !== 'dm' && !isOwnMessage(msg)" class="message-sender-name">
-                {{ msg.sender.displayName }}
-              </div>
-              <div v-if="msg.quote" class="message-quote">
-                <span class="quote-name">{{ msg.quote.senderName }}</span>
-                <span class="quote-preview">{{ msg.quote.preview }}</span>
-              </div>
-              <p v-if="msg.content">{{ msg.content }}</p>
-              <p v-else-if="msg.revokedAt" class="revoked-hint">消息已撤回</p>
-              <div v-if="msg.attachment && isVoice(msg.attachment)" class="voice-bubble" @click="toggleVoice(msg)">
-                <span class="voice-icon">{{ playingVoice === msg.id ? '⏸' : '▶' }}</span>
-                <span class="voice-wave">🔊 语音 {{ msg.attachment.duration || '?' }}″</span>
-              </div>
-              <MessageAttachment v-else-if="msg.attachment" :attachment="msg.attachment" />
-              <span class="message-time">{{ formatBubbleTime(msg.createdAt) }}</span>
+          <template v-for="(msg, index) in userMessages" :key="msg.id">
+            <div v-if="isNewDay(index)" class="message-day-divider">
+              <span>{{ formatDayLabel(msg.createdAt) }}</span>
             </div>
-          </article>
+            <article
+              class="message-row" :class="{ 'message-row--own': isOwnMessage(msg) }"
+              @contextmenu="openMsgMenu(msg, $event)"
+              @touchstart="startLongPress(msg, $event)"
+              @touchend="cancelLongPress"
+              @touchmove="cancelLongPress"
+            >
+              <button
+                type="button"
+                class="message-avatar-btn"
+                :title="`查看「${msg.sender.displayName}」的主页`"
+                @click.stop="openProfile(msg.sender.id)"
+              >
+                <UiAvatar :src="msg.sender.avatarUrl" :fallback="msg.sender.displayName?.[0] || '?'" size="sm" />
+              </button>
+              <div class="message-bubble" :class="bubbleClass(msg, 0)">
+                <div class="message-sender-name" @click="openProfile(msg.sender.id)">
+                  {{ msg.sender.displayName }}
+                </div>
+                <div v-if="msg.quote" class="message-quote">
+                  <span class="quote-name">{{ msg.quote.senderName }}</span>
+                  <span class="quote-preview">{{ msg.quote.preview }}</span>
+                </div>
+                <p v-if="msg.content">{{ msg.content }}</p>
+                <p v-else-if="msg.revokedAt" class="revoked-hint">消息已撤回</p>
+                <div v-if="msg.attachment && isVoice(msg.attachment)" class="voice-bubble" @click="toggleVoice(msg)">
+                  <span class="voice-icon">{{ playingVoice === msg.id ? '⏸' : '▶' }}</span>
+                  <span class="voice-wave">🔊 语音 {{ msg.attachment.duration || '?' }}″</span>
+                </div>
+                <MessageAttachment v-else-if="msg.attachment" :attachment="msg.attachment" />
+                <span class="message-time">{{ formatBubbleTime(msg.createdAt) }}</span>
+              </div>
+            </article>
+          </template>
         </section>
 
         <footer class="chat-composer">
@@ -1464,8 +1510,27 @@ onBeforeUnmount(() => {
   font-size: 14px;
 }
 
+/* 日期分隔条：居中，与消息明显区分 */
+.message-day-divider {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0 12px;
+  pointer-events: none;
+}
+
+.message-day-divider span {
+  padding: 3px 12px;
+  font-size: 12px;
+  color: #8696a0;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(11, 20, 26, 0.08);
+}
+
 .message-row {
   display: flex;
+  align-items: flex-start;
+  gap: 8px;
   margin-bottom: 12px;
   width: 100%;
   justify-content: flex-start;
@@ -1473,6 +1538,25 @@ onBeforeUnmount(() => {
 
 .message-row--own {
   justify-content: flex-end;
+}
+
+/* 自己的消息：头像排在气泡右侧 */
+.message-row--own .message-avatar-btn {
+  order: 2;
+}
+
+.message-avatar-btn {
+  flex: 0 0 auto;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.message-avatar-btn:active {
+  opacity: 0.7;
 }
 
 .message-bubble {
@@ -1495,6 +1579,11 @@ onBeforeUnmount(() => {
   font-weight: 600;
   color: #008069;
   margin-bottom: 4px;
+  cursor: pointer;
+}
+
+.message-sender-name:hover {
+  text-decoration: underline;
 }
 
 .message-time {
