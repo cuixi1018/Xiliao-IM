@@ -1,4 +1,4 @@
-import { hashPassword } from '../auth.js';
+import { createSession, hashPassword } from '../auth.js';
 import { getSiteSettings, makeUniqueChatId } from '../db.js';
 import { ApiError } from '../errors.js';
 import { errorResponse, parseJsonRequest } from '../utils.js';
@@ -219,5 +219,61 @@ export function registerRegistrationRoutes(app) {
     const result = await createXiliaoUser(c, { xiSub, username, password, displayName });
     if (result instanceof Response) return result;
     return c.json(result);
+  });
+
+  // 二合一：按熙熙账号唯一标识查绑定。
+  // 已绑定 -> 免密签发细聊会话（token），未绑定 -> bound:false 让注册站展示注册表单。
+  // 同样用共享密钥认证，供独立注册站调用。
+  app.post('/api/public/oauth-resolve', async (c) => {
+    const configuredSecret = String(c.env.REGISTER_SECRET || '');
+    const providedSecret = String(c.req.header('X-Register-Secret') || '').trim();
+    if (!configuredSecret || providedSecret !== configuredSecret) {
+      return errorResponse('注册密钥无效', 401);
+    }
+
+    const payload = await parseJsonRequest(c.req.raw);
+    const xiSub = String(payload.xiSub || '').trim();
+    if (!xiSub) {
+      return errorResponse('缺少熙熙账号标识', 400);
+    }
+
+    const mapping = await c.env.DB.prepare(
+      'SELECT xlim_user_id FROM oauth_mappings WHERE xi_sub = ? LIMIT 1'
+    )
+      .bind(xiSub)
+      .all();
+    const userId = mapping.results[0]?.xlim_user_id;
+    if (!userId) {
+      return c.json({ bound: false });
+    }
+
+    // 找到绑定账号，检查状态后免密登录
+    const user = await c.env.DB.prepare(
+      `SELECT * FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1`
+    )
+      .bind(Number(userId))
+      .all();
+    const row = user.results[0];
+    if (!row || Number(row.is_disabled)) {
+      return errorResponse('绑定的账号不可用，请联系管理员', 403);
+    }
+    if (
+      row.banned_until === 'permanent' ||
+      (row.banned_until && new Date(row.banned_until).getTime() > Date.now())
+    ) {
+      return errorResponse('账号已被封禁，暂时无法登录', 403);
+    }
+
+    const session = await createSession(c.env, row);
+    return c.json({
+      bound: true,
+      token: session.token,
+      session,
+      user: {
+        username: row.username,
+        displayName: row.display_name,
+        chatId: row.chat_id
+      }
+    });
   });
 }
