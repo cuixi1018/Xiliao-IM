@@ -37,14 +37,24 @@ onMounted(async () => {
         showError('注册服务尚未配置完成，请联系管理员');
         return;
       }
-      const state = 'xiliao_' + Date.now();
+      const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
       sessionStorage.setItem('regOauthState', state);
-      const url = `${config.authEndpoint}?response_type=code&client_id=${encodeURIComponent(config.clientId)}&redirect_uri=${encodeURIComponent(config.redirectUri)}&scope=${encodeURIComponent(config.scope || 'basic')}&state=${encodeURIComponent(state)}`;
+      const url = `${config.authEndpoint}?response_type=code&client_id=${encodeURIComponent(config.clientId)}&redirect_uri=${encodeURIComponent(config.redirectUri)}&scope=profile&state=${encodeURIComponent(state)}`;
       window.location.href = url;
       return;
     }
 
-    // 已回调：换取用户信息
+    // 已回调：校验 state 防 CSRF
+    const returnedState = String(route.query.state || '');
+    const savedState = sessionStorage.getItem('regOauthState') || '';
+    if (!returnedState || !savedState || returnedState !== savedState) {
+      sessionStorage.removeItem('regOauthState');
+      showError('state 校验失败，请重新发起授权');
+      return;
+    }
+    sessionStorage.removeItem('regOauthState');
+
+    // 换取用户信息
     const data = await api.regExchange(code);
     tempToken.value = data.tempToken;
     userInfo.value = data.userinfo;
