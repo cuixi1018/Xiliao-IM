@@ -63,7 +63,7 @@ async function submit() {
           v-if="store.site.allowRegistration"
           type="button"
           @click="goRegister"
-        >注册新账号</button>
+        >熙熙账号登录 / 注册</button>
       </div>
 
       <p class="wx-login__tip">细聊号格式如 <code>hello#8F3A</code>，可在「设置」中查看自己的细聊号</p>
