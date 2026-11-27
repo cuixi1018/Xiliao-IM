@@ -7,6 +7,16 @@ function isCapacitor() {
   return typeof window !== 'undefined' && Boolean(window.Capacitor?.isNativePlatform?.() || window.Capacitor?.getPlatform?.() !== 'web');
 }
 
+function isDesktop() {
+  return typeof window !== 'undefined' && Boolean(window.XiliaoDesktop?.isDesktop);
+}
+
+async function notifyDesktop(title, body) {
+  try {
+    window.XiliaoDesktop.notify(title, body);
+  } catch { /* ignore */ }
+}
+
 function isHidden() {
   return typeof document !== 'undefined' && document.visibilityState === 'hidden';
 }
@@ -54,7 +64,9 @@ export function showMessageNotification({ room, senderName, preview }) {
   const title = who ? `${who} 发来消息` : '细聊新消息';
   const roomName = room?.kind === 'dm' ? '' : (room?.name ? `「${room.name}」` : '');
   const body = roomName ? `${roomName} ${text}` : text;
-  if (isCapacitor()) {
+  if (isDesktop()) {
+    void notifyDesktop(title, body);
+  } else if (isCapacitor()) {
     void notifyCapacitor(title, body);
   } else {
     void notifyWeb(title, body);
@@ -63,6 +75,9 @@ export function showMessageNotification({ room, senderName, preview }) {
 
 // APP 启动后可主动申请通知权限
 export async function requestNotifyPermission() {
+  if (isDesktop()) {
+    return;
+  }
   if (isCapacitor()) {
     try {
       const { LocalNotifications } = await import('@capacitor/local-notifications');
