@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../api.js';
 import store from '../store.js';
+import { formatFullTime } from '../time-utils.js';
 import UiButton from '../components/ui/Button.vue';
 import UiSurface from '../components/ui/Surface.vue';
 
@@ -281,7 +282,7 @@ onMounted(loadOverview);
               <div class="admin-invite-card__url">{{ inviteLinkUrl(invite.token) }}</div>
               <div class="admin-invite-card__meta">
                 <span>创建者：{{ invite.creatorDisplayName }}</span>
-                <span>创建时间：{{ new Date(invite.createdAt).toLocaleString() }}</span>
+                <span>创建时间：{{ formatFullTime(invite.createdAt) }}</span>
                 <span v-if="invite.consumerDisplayName">使用者：{{ invite.consumerDisplayName }}</span>
               </div>
             </UiSurface>
