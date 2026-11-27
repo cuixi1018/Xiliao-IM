@@ -244,8 +244,8 @@ CREATE INDEX IF NOT EXISTS idx_channels_kind
 CREATE INDEX IF NOT EXISTS idx_users_username
   ON users(username);
 
-CREATE INDEX IF NOT EXISTS idx_users_chat_id
-  ON users(chat_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_chat_id
+  ON users(chat_id) WHERE chat_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_friendships_requester
   ON friendships(requester_id, status);
