@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../api.js';
+import { formatFullTime } from '../time-utils.js';
 import UiButton from '../components/ui/Button.vue';
 import UiSurface from '../components/ui/Surface.vue';
 
@@ -124,7 +125,7 @@ onMounted(loadAll);
             </thead>
             <tbody>
               <tr v-for="item in searchResults" :key="item.id">
-                <td>{{ new Date(item.createdAt).toLocaleString() }}</td>
+                <td>{{ formatFullTime(item.createdAt) }}</td>
                 <td>{{ item.sender.displayName }}</td>
                 <td>{{ item.room.kind === 'dm' ? '私信' : '群组' }} · {{ item.room.name }}</td>
                 <td>{{ item.content || item.attachmentName }}</td>
