@@ -314,7 +314,10 @@ export class ChannelRoom {
               },
               messageId: Number(message.id),
               createdAt: message.createdAt,
-              unreadCount
+              unreadCount,
+              // 供 APP 系统通知展示“谁发的：内容”
+              senderName: String(message.sender?.displayName || ''),
+              preview: String(message.content || (message.attachment?.name ? '[文件] ' + message.attachment.name : '') || '').slice(0, 120)
             })
           });
         } catch (error) {
