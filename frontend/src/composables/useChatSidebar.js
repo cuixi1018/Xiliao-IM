@@ -1,5 +1,6 @@
 import { computed, reactive, ref } from "vue";
 import api from "../api.js";
+import { formatListTime as formatListTimeUtil } from "../time-utils.js";
 
 export function useChatSidebar({ error, applyActiveChannel, selectDm }) {
 	const channels = ref([]);
@@ -102,10 +103,7 @@ export function useChatSidebar({ error, applyActiveChannel, selectDm }) {
 	});
 
 	function formatListTime(value) {
-		if (!value) {
-			return "";
-		}
-		return new Date(value).toLocaleDateString();
+		return formatListTimeUtil(value);
 	}
 
 	function findConversationSource(kind, roomId) {
