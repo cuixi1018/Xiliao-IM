@@ -191,7 +191,7 @@ const genderLabel = computed(() => {
 </template>
 
 <style scoped>
-.profile-page { min-height: 100vh; padding-bottom: calc(64px + env(safe-area-inset-bottom)); background: #ededed; color: #191919; }
+.profile-page { height: 100vh; height: 100dvh; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: calc(64px + env(safe-area-inset-bottom)); background: #ededed; color: #191919; }
 .profile-header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; height: 52px; padding: 0 12px; background: #f7f7f7; border-bottom: 1px solid #e5e5e5; }
 .profile-header h1 { margin: 0; font-size: 16px; font-weight: 600; }
 .back-btn { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: none; background: none; color: #191919; cursor: pointer; }
