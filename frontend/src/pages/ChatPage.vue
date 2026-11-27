@@ -8,6 +8,7 @@ import UiTextarea from '../components/ui/Textarea.vue';
 import WechatNav from '../components/WechatNav.vue';
 import QRCode from 'qrcode';
 import api from '../api.js';
+import { parseServerDate } from '../time-utils.js';
 import { useActiveRoom } from '../composables/useActiveRoom.js';
 import { useChatRoom } from '../composables/useChatRoom.js';
 import { useChatSidebar } from '../composables/useChatSidebar.js';
@@ -183,8 +184,9 @@ let longPressTimer = null;
 
 function canRecall(msg) {
   if (!isOwnMessage(msg) || msg.revokedAt) return false;
-  const t = new Date(String(msg.createdAt).replace(' ', 'T') + (String(msg.createdAt).includes('Z') || String(msg.createdAt).includes('+') ? '' : 'Z')).getTime();
-  return Date.now() - t <= 2 * 60 * 1000;
+  const d = parseServerDate(msg.createdAt);
+  if (!d) return false;
+  return Date.now() - d.getTime() <= 2 * 60 * 1000;
 }
 function canDelete(msg) {
   return isOwnMessage(msg) && !msg.revokedAt;
@@ -626,25 +628,17 @@ onMounted(() => {
 const systemMessages = computed(() => messages.value.filter((m) => m?.kind === 'system'));
 const userMessages = computed(() => messages.value.filter((m) => m?.kind !== 'system'));
 
-// D1 的 created_at 是 UTC 的 "YYYY-MM-DD HH:MM:SS"，需补 T/Z 按 UTC 解析，否则少 8 小时
-function parseMsgDate(value) {
-  const s = String(value || '');
-  const hasZone = s.includes('Z') || /[+-]\d{2}:?\d{2}$/.test(s);
-  return new Date(s.replace(' ', 'T') + (hasZone ? '' : 'Z'));
-}
-
 function formatBubbleTime(value) {
-  if (!value) return '';
-  const date = parseMsgDate(value);
-  if (Number.isNaN(date.getTime())) return '';
+  const date = parseServerDate(value);
+  if (!date) return '';
   const hours = String(date.getHours()).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
   return `${hours}:${minutes}`;
 }
 
 function msgDayKey(value) {
-  const d = parseMsgDate(value);
-  if (Number.isNaN(d.getTime())) return '';
+  const d = parseServerDate(value);
+  if (!d) return '';
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
@@ -655,13 +649,13 @@ function isNewDay(index) {
 }
 
 function formatDayLabel(value) {
-  const d = parseMsgDate(value);
-  if (Number.isNaN(d.getTime())) return '';
+  const d = parseServerDate(value);
+  if (!d) return '';
   const now = new Date();
-  const today = msgDayKey(now.toISOString());
+  const today = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
   const yesterdayDate = new Date(now);
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-  const yesterday = msgDayKey(yesterdayDate.toISOString());
+  const yesterday = `${yesterdayDate.getFullYear()}-${yesterdayDate.getMonth()}-${yesterdayDate.getDate()}`;
   const key = msgDayKey(value);
   if (key === today) return '今天';
   if (key === yesterday) return '昨天';
