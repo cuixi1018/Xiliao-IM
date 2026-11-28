@@ -32,4 +32,11 @@ store.initialize().finally(() => {
 
   // 初始化 Liquid Glass 效果
   setTimeout(initLiquidGlass, 100);
+
+  // 注册 PWA Service Worker（仅生产环境、支持且非客户端内）
+  if (import.meta.env.PROD && 'serviceWorker' in navigator && !window.Capacitor?.isNativePlatform?.() && !window.XiliaoDesktop?.isDesktop) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }
 });
