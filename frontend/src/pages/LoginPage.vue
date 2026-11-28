@@ -19,7 +19,7 @@ function goRegister() {
 
 // 下载 APP：跳转下载详情页（展示版本信息与各平台安装包），APP 内不显示
 const showDownloadEntry = isWebOnly();
-const APP_DOWNLOAD_PAGE = import.meta.env.VITE_APP_DOWNLOAD_URL || 'https://aaf704dd0c17f5001.app.workbuddy.host/?sharecode=CO6F5BDW2D';
+const APP_DOWNLOAD_PAGE = import.meta.env.VITE_APP_DOWNLOAD_URL || '/download';
 function goDownloadApp() {
   window.open(APP_DOWNLOAD_PAGE, '_blank');
 }
