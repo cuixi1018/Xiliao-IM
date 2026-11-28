@@ -5,6 +5,7 @@ import api from '../api.js';
 import store from '../store.js';
 import UiAvatar from '../components/ui/Avatar.vue';
 import WechatNav from '../components/WechatNav.vue';
+import { copyText } from '../clipboard-utils.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -77,10 +78,11 @@ function viewMoments() {
   router.push(`/moments?userId=${user.value.id}`);
 }
 
-function copyChatId() {
+async function copyChatId() {
   const id = user.value?.chatId;
-  if (!id || typeof navigator === 'undefined' || !navigator.clipboard) return;
-  navigator.clipboard.writeText(id).then(() => msg('已复制细聊号')).catch(() => msg('复制失败', 'error'));
+  if (!id) return;
+  const ok = await copyText(id);
+  msg(ok ? '已复制细聊号' : '复制失败', ok ? 'info' : 'error');
 }
 
 async function chatWith() {
