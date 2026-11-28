@@ -79,7 +79,7 @@ async function submit() {
         下载手机 / 桌面客户端
       </button>
 
-      <p class="wx-login__tip">细聊号格式如 <code>hello#8F3A</code>，可在「设置」中查看自己的细聊号</p>
+      <p class="wx-login__tip">细聊号为字母和数字组成（如 <code>hello520</code>），可在「设置」中查看自己的细聊号</p>
     </div>
   </div>
 </template>
