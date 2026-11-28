@@ -1,8 +1,13 @@
 <script setup>
 // 网页版「下载 APP」提示：每次打开网站显示，提供「下载 APP」与「以后再说」。
 // 原生 APP / 桌面客户端内不显示；按设备自动匹配 APK / EXE。
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { isWebOnly } from '../platform.js';
+
+const route = useRoute();
+// 下载详情页本身不再弹下载提示
+const isDownloadPage = () => route.path === '/download';
 
 const APP_DOWNLOAD_PAGE = import.meta.env.VITE_APP_DOWNLOAD_URL || '/download';
 const APP_VERSION = '1.01';
@@ -26,10 +31,15 @@ function download() {
 function dismiss() { visible.value = false; }
 
 onMounted(() => {
-  if (isWebOnly()) {
+  if (isWebOnly() && !isDownloadPage()) {
     // 轻微延迟，避免遮挡首屏渲染
     setTimeout(() => { visible.value = true; }, 600);
   }
+});
+
+// 进入下载页时立即关闭弹窗
+watch(() => route.path, (path) => {
+  if (path === '/download') visible.value = false;
 });
 </script>
 
