@@ -34,7 +34,7 @@ const showCollapsed = ref(false);
 
 // 网页端聊天右上角下载 APP 入口，跳转下载详情页
 const showDownloadEntry = isWebOnly();
-const APP_DOWNLOAD_PAGE = 'https://aaf704dd0c17f5001.app.workbuddy.host/?sharecode=CO6F5BDW2D';
+const APP_DOWNLOAD_PAGE = '/download';
 function goDownloadApp() { window.open(APP_DOWNLOAD_PAGE, '_blank'); }
 
 const {
