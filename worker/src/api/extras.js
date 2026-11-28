@@ -16,16 +16,36 @@ function mapUserBrief(row) {
   };
 }
 
+// 细聊号：仅字母数字，4-20 位，全局唯一；每 7 天只能修改一次
+const CHAT_ID_PATTERN = /^[a-z0-9]{4,20}$/;
+const CHAT_ID_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+
 export function registerExtraRoutes(app) {
-  // ===== 修改自己的细聊号（格式：前缀#后缀，全局唯一）=====
+  // ===== 修改自己的细聊号（仅字母数字，7 天一次）=====
   app.put('/api/me/chat-id', async (c) => {
     const session = c.get('session');
     const payload = await parseJsonRequest(c.req.raw);
     const raw = String(payload.chatId || '').trim().toLowerCase();
-    if (!/^[a-z0-9_]{1,20}#[a-z0-9]{2,8}$/.test(raw)) {
-      return errorResponse('细聊号格式应为 前缀#后缀（如 xiliao#8f3a）');
+    if (!CHAT_ID_PATTERN.test(raw)) {
+      return errorResponse('细聊号只能包含字母和数字，长度 4-20 位，不能包含 # 或其他符号');
     }
 
+    // 7 天冷却：从上次修改时间算起（chat_id_changed_at 为 NULL 表示从未改过，允许修改）
+    const me = await c.env.DB.prepare(
+      `SELECT chat_id, chat_id_changed_at FROM users WHERE id = ? LIMIT 1`
+    )
+      .bind(session.userId)
+      .first();
+    if (me?.chat_id_changed_at) {
+      const lastMs = new Date(me.chat_id_changed_at).getTime();
+      if (Number.isFinite(lastMs) && Date.now() - lastMs < CHAT_ID_COOLDOWN_MS) {
+        const remainMs = CHAT_ID_COOLDOWN_MS - (Date.now() - lastMs);
+        const remainDays = Math.ceil(remainMs / (24 * 60 * 60 * 1000));
+        return errorResponse(`细聊号 7 天内只能修改一次，请 ${remainDays} 天后再试`, 429);
+      }
+    }
+
+    // 允许保留自己当前的号（去掉 # 后与当前相同视为无变化）——但当前号含 # 不合规，仍需改
     const existing = await c.env.DB.prepare(
       `SELECT id FROM users WHERE chat_id = ? AND id != ? AND deleted_at IS NULL LIMIT 1`
     )
@@ -37,7 +57,7 @@ export function registerExtraRoutes(app) {
 
     try {
       await c.env.DB.prepare(
-        `UPDATE users SET chat_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+        `UPDATE users SET chat_id = ?, chat_id_changed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
       )
         .bind(raw, session.userId)
         .run();
