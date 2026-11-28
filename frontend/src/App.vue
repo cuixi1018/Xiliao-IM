@@ -176,6 +176,6 @@ function unlock() {
 /* 网页版常驻下载 APP 悬浮按钮 */
 .web-download-fab { position: fixed; right: 22px; bottom: 24px; z-index: 150; display: flex; align-items: center; gap: 7px; height: 44px; padding: 0 16px; border: none; border-radius: 999px; background: linear-gradient(135deg,#07c160,#06ad56); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: 0 8px 24px rgba(7,193,96,.36); transition: transform .18s ease, box-shadow .18s ease; }
 .web-download-fab:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(7,193,96,.46); }
-.web-download-fab img { width: 22px; height: 22px; object-fit: contain; background: #fff; border-radius: 6px; padding: 2px; }
+.web-download-fab img { width: 24px; height: 24px; object-fit: contain; }
 @media (max-width: 480px) { .web-download-fab { right: 14px; bottom: 16px; height: 40px; padding: 0 13px; font-size: 13px; } }
 </style>
