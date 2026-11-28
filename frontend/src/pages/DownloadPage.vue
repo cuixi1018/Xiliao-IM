@@ -3,9 +3,10 @@
 // 展示版本信息、更新详情与各平台安装包，自动匹配当前设备。
 import { onMounted, onBeforeUnmount, ref } from 'vue';
 import api from '../api.js';
+import { openDownloadUrl } from '../download-utils.js';
 
 const info = ref(null);
-const version = ref('1.01');
+const version = ref('1.03');
 const changelog = ref([]);
 const loading = ref(true);
 
@@ -38,18 +39,28 @@ onBeforeUnmount(() => {
 function downloads() {
   return info.value?.downloads || {};
 }
-function androidUrl() { return downloads().android?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.02.apk'; }
-function windowsUrl() { return downloads().windows?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.02.exe'; }
-function macX64Url() { return downloads().mac?.x64?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.02-mac-x64.zip'; }
-function macArmUrl() { return downloads().mac?.arm64?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.02-mac-arm64.zip'; }
-function linuxUrl() { return downloads().linux?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.02-linux.AppImage'; }
+function androidUrl() { return downloads().android?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.03.apk'; }
+function windowsUrl() { return downloads().windows?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.03.exe'; }
+function macX64Url() { return downloads().mac?.x64?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.03-mac-x64.zip'; }
+function macArmUrl() { return downloads().mac?.arm64?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.03-mac-arm64.zip'; }
+function linuxUrl() { return downloads().linux?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.03-linux.AppImage'; }
 function iosUrl() { return downloads().ios?.url || 'https://xl.cuixi.qzz.io/'; }
 // Mac 芯片判断：Safari 的 platform 里带 Mac；Apple Silicon 用 navigator.hardwareConcurrency 无法可靠判断，默认推荐 Apple 芯片
 const macIsArm = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || '') && (navigator.hardwareConcurrency || 0) >= 8;
+
+// 统一拦截带 download 属性的链接：APP 内改用系统级下载，网页端保持默认锚点下载
+function onDownloadClick(e) {
+  const a = e.target.closest?.('a[download]');
+  if (!a) return;
+  const isClient = window.Capacitor?.isNativePlatform?.() || window.XiliaoDesktop?.isDesktop;
+  if (!isClient) return; // 纯网页交给浏览器原生下载
+  e.preventDefault();
+  openDownloadUrl(a.href, a.getAttribute('download') || '');
+}
 </script>
 
 <template>
-  <div class="dl-page">
+  <div class="dl-page" @click="onDownloadClick">
     <div class="dl-wrap">
       <header class="dl-header">
         <div class="dl-logo"><img src="/logo.svg" alt="细聊" /></div>
