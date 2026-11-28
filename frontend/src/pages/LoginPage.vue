@@ -3,6 +3,7 @@ import { computed, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import store from '../store.js';
 import api from '../api.js';
+import { isWebOnly } from '../platform.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -16,23 +17,11 @@ function goRegister() {
   window.location.href = REGISTER_SITE_URL;
 }
 
-// 下载 APP：按设备自动匹配安装包
+// 下载 APP：跳转下载详情页（展示版本信息与各平台安装包），APP 内不显示
+const showDownloadEntry = isWebOnly();
 const APP_DOWNLOAD_PAGE = import.meta.env.VITE_APP_DOWNLOAD_URL || 'https://aaf704dd0c17f5001.app.workbuddy.host/?sharecode=CO6F5BDW2D';
-function detectPlatform() {
-  const ua = navigator.userAgent || '';
-  if (/android/i.test(ua)) return 'android';
-  if (/windows/i.test(ua)) return 'windows';
-  return 'other';
-}
 function goDownloadApp() {
-  const platform = detectPlatform();
-  if (platform === 'android') {
-    window.open('https://xl.cuixi.qzz.io/files/releases/xiliao-v1.0.apk', '_blank');
-  } else if (platform === 'windows') {
-    window.open('https://xl.cuixi.qzz.io/files/releases/xiliao-v1.0.exe', '_blank');
-  } else {
-    window.open(APP_DOWNLOAD_PAGE, '_blank');
-  }
+  window.open(APP_DOWNLOAD_PAGE, '_blank');
 }
 
 async function submit() {
@@ -85,7 +74,7 @@ async function submit() {
         >熙熙账号登录 / 注册</button>
       </div>
 
-      <button type="button" class="app-download-entry" @click="goDownloadApp">
+      <button v-if="showDownloadEntry" type="button" class="app-download-entry" @click="goDownloadApp">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M5 21h14"/></svg>
         下载手机 / 桌面客户端
       </button>
