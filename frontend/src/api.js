@@ -61,6 +61,9 @@ export default {
   getSite() {
     return request('/site');
   },
+  appVersion() {
+    return request('/app/version');
+  },
   changePassword(payload) {
     return request('/auth/change-password', {
       method: 'POST',
