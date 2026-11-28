@@ -59,7 +59,10 @@ async function notifyWeb(title, body) {
 
 // 收到新消息时调用。payload: { room, senderName, preview }
 export function showMessageNotification({ room, senderName, preview }) {
-  if (!isHidden()) return;
+  // 网页端：仅在页面不可见时才弹，避免打扰正在浏览网页的用户。
+  // APP / 桌面客户端：即使在前台（但不在该会话）也要提醒——这是手机端“有人发消息接不到”的关键，
+  // 因为手机端经常停留在设置/通讯录等非聊天页，此时 document 仍是 visible。
+  if (!isCapacitor() && !isDesktop() && !isHidden()) return;
   const prefs = getPrefs();
   if (!prefs.notifyEnabled || isQuietNow()) return;
   const who = String(senderName || '').trim();
