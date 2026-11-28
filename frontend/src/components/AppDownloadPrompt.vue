@@ -5,8 +5,7 @@ import { onMounted, ref } from 'vue';
 import { isWebOnly } from '../platform.js';
 
 const APP_DOWNLOAD_PAGE = import.meta.env.VITE_APP_DOWNLOAD_URL || 'https://aaf704dd0c17f5001.app.workbuddy.host/?sharecode=CO6F5BDW2D';
-const APK_URL = 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.0.apk';
-const EXE_URL = 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.0.exe';
+const APP_VERSION = '1.01';
 
 const visible = ref(false);
 
@@ -19,10 +18,9 @@ function detectPlatform() {
 const platform = detectPlatform();
 const platformLabel = platform === 'android' ? 'Android 版' : platform === 'windows' ? 'Windows 版' : '客户端';
 
+// 点击进入下载详情页（展示版本信息与各平台安装包），不直接下载
 function download() {
-  if (platform === 'android') window.open(APK_URL, '_blank');
-  else if (platform === 'windows') window.open(EXE_URL, '_blank');
-  else window.open(APP_DOWNLOAD_PAGE, '_blank');
+  window.open(APP_DOWNLOAD_PAGE, '_blank');
   dismiss();
 }
 function dismiss() { visible.value = false; }
@@ -47,8 +45,9 @@ onMounted(() => {
         </div>
         <h3 class="appdlg-title">下载细聊客户端</h3>
         <p class="appdlg-desc">体验更流畅的消息通知与完整功能<br/>已为你匹配 <strong>{{ platformLabel }}</strong></p>
+        <div class="appdlg-version">v{{ APP_VERSION }} · 点击查看版本详情</div>
         <div class="appdlg-actions">
-          <button type="button" class="appdlg-primary" @click="download">下载 APP</button>
+          <button type="button" class="appdlg-primary" @click="download">查看详情并下载</button>
           <button type="button" class="appdlg-secondary" @click="dismiss">以后再说</button>
         </div>
       </div>
@@ -111,6 +110,7 @@ onMounted(() => {
 .appdlg-title { margin: 0 0 8px; font-size: 18px; font-weight: 700; color: #191919; }
 .appdlg-desc { margin: 0 0 22px; font-size: 13px; line-height: 1.6; color: #888; }
 .appdlg-desc strong { color: #07c160; }
+.appdlg-version { display: inline-block; margin: -8px 0 18px; padding: 4px 12px; border-radius: 999px; background: rgba(7,193,96,0.09); color: #07c160; font-size: 12px; font-weight: 600; }
 .appdlg-actions { display: flex; flex-direction: column; gap: 10px; }
 .appdlg-primary {
   height: 44px;
