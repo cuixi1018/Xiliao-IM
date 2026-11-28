@@ -6,10 +6,13 @@ import store from '../store.js';
 import UiAvatar from '../components/ui/Avatar.vue';
 import QRCode from 'qrcode';
 import { getTheme, setTheme as applyTheme } from '../theme.js';
+import { isClientApp } from '../platform.js';
 
 const router = useRouter();
 const session = computed(() => store.session);
 const showAdminEntry = computed(() => Boolean(session.value?.isAdmin));
+// 本机相关功能（更新/缓存/本机记录/下载客户端）仅 APP 或桌面客户端显示
+const inClient = isClientApp();
 
 const profileForm = reactive({
   displayName: session.value?.displayName || '',
@@ -454,26 +457,8 @@ function clearLocalChatRecords() {
   }
 }
 
-// ===== 下载 APP（按设备自动匹配）=====
-function detectPlatform() {
-  const ua = navigator.userAgent || '';
-  if (/android/i.test(ua)) return 'android';
-  if (/windows/i.test(ua)) return 'windows';
-  return 'other';
-}
-const downloadPlatform = ref(detectPlatform());
-function getDownloadUrl(platform) {
-  const d = appInfo.value?.downloads;
-  if (!d) return platform === 'windows' ? 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.0.exe' : 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.0.apk';
-  return platform === 'windows' ? d.windows?.url : d.android?.url;
-}
-function openAppDownload() {
-  const url = getDownloadUrl(downloadPlatform.value === 'other' ? 'android' : downloadPlatform.value);
-  if (url) window.open(url, '_blank');
-}
-
-// 进入设置页时静默检查一次更新
-onMounted(() => { checkUpdate(false); });
+// 进入设置页时静默检查一次更新（仅客户端）
+onMounted(() => { if (inClient) checkUpdate(false); });
 </script>
 
 <template>
@@ -574,38 +559,33 @@ onMounted(() => { checkUpdate(false); });
               <option v-for="opt in themeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
           </label>
-          <!-- 检查更新 -->
-          <button type="button" class="setting-row" :disabled="checkingUpdate" @click="checkUpdate(true)">
-            <span class="setting-row__icon">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/><path d="M12 7v5l3 2"/></svg>
-            </span>
-            <span class="setting-row__label">检查更新</span>
-            <span class="setting-row__value">{{ checkingUpdate ? '检查中…' : (appInfo ? 'v' + appInfo.version : 'v1.0.0') }}</span>
-          </button>
-          <!-- 下载 APP -->
-          <button type="button" class="setting-row" @click="openAppDownload">
-            <span class="setting-row__icon">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M5 21h14"/></svg>
-            </span>
-            <span class="setting-row__label">下载 APP</span>
-            <span class="setting-row__value">{{ downloadPlatform === 'windows' ? 'Windows' : downloadPlatform === 'android' ? 'Android' : '选择版本' }}</span>
-          </button>
-          <!-- 清除缓存 -->
-          <button type="button" class="setting-row" :disabled="clearingCache" @click="clearLocalCache">
-            <span class="setting-row__icon">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
-            </span>
-            <span class="setting-row__label">清除本机缓存</span>
-            <span class="setting-row__value">{{ clearingCache ? '清理中…' : '' }}</span>
-          </button>
-          <!-- 清除本机聊天记录 -->
-          <button type="button" class="setting-row" :disabled="clearingChat" @click="clearLocalChatRecords">
-            <span class="setting-row__icon">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="10" x2="15" y2="10"/></svg>
-            </span>
-            <span class="setting-row__label">清除本机聊天记录</span>
-            <span class="setting-row__value">{{ clearingChat ? '清理中…' : '' }}</span>
-          </button>
+          <!-- 以下为本机功能，仅 APP / 桌面客户端显示 -->
+          <template v-if="inClient">
+            <!-- 检查更新 -->
+            <button type="button" class="setting-row" :disabled="checkingUpdate" @click="checkUpdate(true)">
+              <span class="setting-row__icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/><path d="M12 7v5l3 2"/></svg>
+              </span>
+              <span class="setting-row__label">检查更新</span>
+              <span class="setting-row__value">{{ checkingUpdate ? '检查中…' : (appInfo ? 'v' + appInfo.version : 'v1.0.0') }}</span>
+            </button>
+            <!-- 清除缓存 -->
+            <button type="button" class="setting-row" :disabled="clearingCache" @click="clearLocalCache">
+              <span class="setting-row__icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+              </span>
+              <span class="setting-row__label">清除本机缓存</span>
+              <span class="setting-row__value">{{ clearingCache ? '清理中…' : '' }}</span>
+            </button>
+            <!-- 清除本机聊天记录 -->
+            <button type="button" class="setting-row" :disabled="clearingChat" @click="clearLocalChatRecords">
+              <span class="setting-row__icon">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="10" x2="15" y2="10"/></svg>
+              </span>
+              <span class="setting-row__label">清除本机聊天记录</span>
+              <span class="setting-row__value">{{ clearingChat ? '清理中…' : '' }}</span>
+            </button>
+          </template>
         </section>
 
         <section class="settings-section">
