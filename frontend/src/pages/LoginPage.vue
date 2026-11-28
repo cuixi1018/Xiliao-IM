@@ -16,6 +16,25 @@ function goRegister() {
   window.location.href = REGISTER_SITE_URL;
 }
 
+// 下载 APP：按设备自动匹配安装包
+const APP_DOWNLOAD_PAGE = import.meta.env.VITE_APP_DOWNLOAD_URL || 'https://aaf704dd0c17f5001.app.workbuddy.host/?sharecode=CO6F5BDW2D';
+function detectPlatform() {
+  const ua = navigator.userAgent || '';
+  if (/android/i.test(ua)) return 'android';
+  if (/windows/i.test(ua)) return 'windows';
+  return 'other';
+}
+function goDownloadApp() {
+  const platform = detectPlatform();
+  if (platform === 'android') {
+    window.open('https://xl.cuixi.qzz.io/files/releases/xiliao-v1.0.apk', '_blank');
+  } else if (platform === 'windows') {
+    window.open('https://xl.cuixi.qzz.io/files/releases/xiliao-v1.0.exe', '_blank');
+  } else {
+    window.open(APP_DOWNLOAD_PAGE, '_blank');
+  }
+}
+
 async function submit() {
   if (!form.username.trim() || !form.password) {
     error.value = '请输入账号和密码';
@@ -66,6 +85,11 @@ async function submit() {
         >熙熙账号登录 / 注册</button>
       </div>
 
+      <button type="button" class="app-download-entry" @click="goDownloadApp">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M5 21h14"/></svg>
+        下载手机 / 桌面客户端
+      </button>
+
       <p class="wx-login__tip">细聊号格式如 <code>hello#8F3A</code>，可在「设置」中查看自己的细聊号</p>
     </div>
   </div>
@@ -92,4 +116,6 @@ async function submit() {
 .wx-login__links button { border: none; background: transparent; color: #576b95; font-size: 13px; cursor: pointer; }
 .wx-login__tip { margin: 20px 0 0; font-size: 11px; color: #b0b0b0; text-align: center; line-height: 1.6; }
 .wx-login__tip code { background: #f5f5f5; padding: 1px 5px; border-radius: 4px; color: #888; }
+.app-download-entry { width: 100%; margin-top: 14px; height: 42px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid rgba(7,193,96,0.35); border-radius: 8px; background: rgba(7,193,96,0.06); color: #07c160; font-size: 13.5px; font-weight: 500; cursor: pointer; transition: background 150ms; }
+.app-download-entry:hover { background: rgba(7,193,96,0.14); }
 </style>
