@@ -1,7 +1,7 @@
 <script setup>
 // 细聊客户端下载详情页（内部域名 /download）
 // 展示版本信息、更新详情与各平台安装包，自动匹配当前设备。
-import { onMounted, ref } from 'vue';
+import { onMounted, onBeforeUnmount, ref } from 'vue';
 import api from '../api.js';
 
 const info = ref(null);
@@ -20,6 +20,8 @@ const platform = (() => {
 })();
 
 onMounted(async () => {
+  // 解除移动端固定视口限制，允许本页整页滚动
+  document.documentElement.classList.add('allow-scroll');
   try {
     const data = await api.appVersion();
     if (data?.version) version.value = data.version;
@@ -27,6 +29,10 @@ onMounted(async () => {
     info.value = data;
   } catch { /* 用兜底数据 */ }
   finally { loading.value = false; }
+});
+
+onBeforeUnmount(() => {
+  document.documentElement.classList.remove('allow-scroll');
 });
 
 function downloads() {
@@ -56,7 +62,9 @@ function windowsUrl() { return downloads().windows?.url || 'https://xl.cuixi.qzz
 
       <div class="dl-card" :class="{ recommended: platform === 'android' }">
         <div class="dl-plat">
-          <div class="dl-icon">🤖</div>
+          <div class="dl-icon">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="#3DDC84"><path d="M17.6 9.48l1.84-3.18a.5.5 0 0 0-.87-.5l-1.9 3.29A7.1 7.1 0 0 0 12 7.5a7.1 7.1 0 0 0-4.67 1.59l-1.9-3.3a.5.5 0 1 0-.87.5L6.4 9.48A6.9 6.9 0 0 0 5.1 13.5h13.8a6.9 6.9 0 0 0-1.3-4.02ZM8.5 12a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm7 0a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"/><path d="M5.1 14.5v4a1.5 1.5 0 0 0 3 0v-4H5.1Zm10.8 0v4a1.5 1.5 0 0 0 3 0v-4h-3Z"/></svg>
+        </div>
           <div><h2>Android 手机版</h2><div class="dl-sub">适用于 Android 7.0 及以上</div></div>
         </div>
         <div class="dl-meta"><span>📦 APK 安装包</span><span>💾 3.2 MB</span><span>✅ 已签名 · 开发者 cuixi1018</span></div>
@@ -65,7 +73,9 @@ function windowsUrl() { return downloads().windows?.url || 'https://xl.cuixi.qzz
 
       <div class="dl-card" :class="{ recommended: platform === 'windows' }">
         <div class="dl-plat">
-          <div class="dl-icon">💻</div>
+          <div class="dl-icon">
+            <svg viewBox="0 0 24 24" width="27" height="27" fill="#0078D4"><path d="M2.5 5.3l8-1.1v7.2H2.5V5.3Zm9.2-1.3 10-1.4v9.9h-10V4Zm-9.2 9.6h8v7.3l-8-1.1v-6.2Zm9.2 0h10v9.7l-10-1.4v-8.3Z"/></svg>
+          </div>
           <div><h2>Windows 桌面版</h2><div class="dl-sub">适用于 Windows 10 / 11（64 位）</div></div>
         </div>
         <div class="dl-meta"><span>📦 便携版 EXE</span><span>💾 100 MB</span><span>⚡ 双击即用</span></div>
@@ -79,10 +89,22 @@ function windowsUrl() { return downloads().windows?.url || 'https://xl.cuixi.qzz
 
       <div class="dl-section-title">其他用户端</div>
       <div class="dl-grid">
-        <div class="dl-other"><div class="dl-other-ic">🍎</div><h3>Mac 桌面版</h3><p>macOS 10.15+</p><span class="dl-soon">即将推出</span></div>
-        <div class="dl-other"><div class="dl-other-ic">📱</div><h3>iOS 版</h3><p>iPhone / iPad</p><span class="dl-soon">即将推出</span></div>
-        <div class="dl-other"><div class="dl-other-ic">🐧</div><h3>Linux 版</h3><p>桌面 Linux</p><span class="dl-soon">即将推出</span></div>
-        <div class="dl-other"><div class="dl-other-ic">🌐</div><h3>网页版</h3><p>无需安装</p><a href="/">立即打开 →</a></div>
+        <div class="dl-other">
+          <div class="dl-other-ic"><svg viewBox="0 0 24 24" width="26" height="26" fill="#555"><path d="M16.4 12.9c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.2-2.8.8-3.5.8s-1.8-.8-2.9-.8c-1.5 0-2.9.9-3.6 2.2-1.6 2.7-.4 6.7 1.1 8.9.7 1.1 1.6 2.3 2.7 2.2 1.1 0 1.5-.7 2.8-.7s1.7.7 2.9.7c1.2 0 2-1.1 2.7-2.2.8-1.2 1.2-2.4 1.2-2.5-.1 0-2.9-1.1-3-4.1ZM14.1 5.9c.6-.7 1-1.7.9-2.7-.9 0-2 .6-2.6 1.3-.6.6-1 1.7-.9 2.6 1 .1 2-.5 2.6-1.2Z"/></svg></div>
+          <h3>Mac 桌面版</h3><p>macOS 10.15+</p><span class="dl-soon">即将推出</span>
+        </div>
+        <div class="dl-other">
+          <div class="dl-other-ic"><svg viewBox="0 0 24 24" width="26" height="26" fill="#555"><rect x="6.5" y="2" width="11" height="20" rx="2.5" fill="none" stroke="#555" stroke-width="1.6"/><path d="M3.2 8v8M20.8 8v8" stroke="#555" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="19.3" r="0.9" fill="#555"/></svg></div>
+          <h3>iOS 版</h3><p>iPhone / iPad</p><span class="dl-soon">即将推出</span>
+        </div>
+        <div class="dl-other">
+          <div class="dl-other-ic"><svg viewBox="0 0 24 24" width="26" height="26" fill="#F5C518"><path d="M12 2C7.6 2 4 5.2 4 9.4c0 2 .8 3.6 2.2 5L4.7 20c-.1.4.3.7.6.5l3.2-2.1c1.1.4 2.3.6 3.5.6 4.4 0 8-3.2 8-7.4S16.4 2 12 2Zm-3.2 8.7a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Zm6.4 0a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Z"/></svg></div>
+          <h3>Linux 版</h3><p>桌面 Linux</p><span class="dl-soon">即将推出</span>
+        </div>
+        <div class="dl-other">
+          <div class="dl-other-ic"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#07c160" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.6 3.8 9S14.5 18.5 12 21c-2.5-2.5-3.8-5.6-3.8-9S9.5 5.5 12 3Z"/></svg></div>
+          <h3>网页版</h3><p>无需安装</p><a href="/">立即打开 →</a>
+        </div>
       </div>
 
       <div class="dl-notes">
@@ -132,7 +154,7 @@ function windowsUrl() { return downloads().windows?.url || 'https://xl.cuixi.qzz
 .dl-section-title::before { content: ''; width: 4px; height: 16px; border-radius: 2px; background: #07c160; }
 .dl-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 12px; }
 .dl-other { background: rgba(255,255,255,.82); border: 1px solid rgba(255,255,255,.8); border-radius: 18px; padding: 18px; text-align: center; box-shadow: 0 6px 18px rgba(31,58,80,.05); }
-.dl-other-ic { font-size: 26px; }
+.dl-other-ic { font-size: 26px; height: 30px; display: flex; align-items: center; justify-content: center; }
 .dl-other h3 { font-size: 14px; margin: 6px 0 2px; color: #191919; }
 .dl-other p { font-size: 12px; color: #7a8a99; margin: 0; }
 .dl-soon { display: inline-block; margin-top: 8px; font-size: 12.5px; font-weight: 600; color: #a7b2bb; }
