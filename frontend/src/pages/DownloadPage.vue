@@ -38,11 +38,11 @@ onBeforeUnmount(() => {
 function downloads() {
   return info.value?.downloads || {};
 }
-function androidUrl() { return downloads().android?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.01.apk'; }
-function windowsUrl() { return downloads().windows?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.01.exe'; }
-function macX64Url() { return downloads().mac?.x64?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.01-mac-x64.zip'; }
-function macArmUrl() { return downloads().mac?.arm64?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.01-mac-arm64.zip'; }
-function linuxUrl() { return downloads().linux?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.01-linux.AppImage'; }
+function androidUrl() { return downloads().android?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.02.apk'; }
+function windowsUrl() { return downloads().windows?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.02.exe'; }
+function macX64Url() { return downloads().mac?.x64?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.02-mac-x64.zip'; }
+function macArmUrl() { return downloads().mac?.arm64?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.02-mac-arm64.zip'; }
+function linuxUrl() { return downloads().linux?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.02-linux.AppImage'; }
 function iosUrl() { return downloads().ios?.url || 'https://xl.cuixi.qzz.io/'; }
 // Mac 芯片判断：Safari 的 platform 里带 Mac；Apple Silicon 用 navigator.hardwareConcurrency 无法可靠判断，默认推荐 Apple 芯片
 const macIsArm = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || '') && (navigator.hardwareConcurrency || 0) >= 8;
