@@ -13,6 +13,7 @@ import { getSiteSettings, getUserByUsername, makeUniqueChatId } from './db.js';
 import { ApiError } from './errors.js';
 import { adminMiddleware, authMiddleware } from './middleware.js';
 import { registerAdminRoutes } from './api/admin.js';
+import { registerAppVersionRoutes } from './api/app-version.js';
 import { registerChannelRoutes } from './api/channels.js';
 import { registerDmRoutes } from './api/dm.js';
 import { registerExtraRoutes } from './api/extras.js';
@@ -207,6 +208,9 @@ app.post('/api/auth/login', async (c) => {
 
 // 内置注册（熙熙 OAuth）——必须在认证中间件之前，注册时用户尚未登录
 registerRegistrationRoutes(app);
+
+// APP 版本检查（公开接口，无需登录）
+registerAppVersionRoutes(app);
 
 app.use('/api/*', authMiddleware);
 
