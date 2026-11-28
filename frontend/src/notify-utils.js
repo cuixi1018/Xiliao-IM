@@ -1,5 +1,6 @@
 // 新消息系统通知：APP 内用 Capacitor 本地通知，浏览器用 Web Notification API。
 // 仅在页面处于后台/隐藏时才弹出，避免打扰正在聊天的用户。
+import { getPrefs, isQuietNow, maskNotificationBody } from './app-prefs.js';
 
 let webPermissionRequested = false;
 
@@ -59,11 +60,16 @@ async function notifyWeb(title, body) {
 // 收到新消息时调用。payload: { room, senderName, preview }
 export function showMessageNotification({ room, senderName, preview }) {
   if (!isHidden()) return;
+  const prefs = getPrefs();
+  if (!prefs.notifyEnabled || isQuietNow()) return;
   const who = String(senderName || '').trim();
   const text = String(preview || '').trim();
-  const title = who ? `${who} 发来消息` : '细聊新消息';
+  // 隐私模式下不暴露发送者昵称与消息内容
+  const safeWho = prefs.privacyMode || !prefs.previewEnabled ? '' : who;
+  const title = safeWho ? `${safeWho} 发来消息` : '细聊新消息';
   const roomName = room?.kind === 'dm' ? '' : (room?.name ? `「${room.name}」` : '');
-  const body = roomName ? `${roomName} ${text}` : text;
+  const rawBody = roomName ? `${roomName} ${text}` : text;
+  const body = maskNotificationBody(rawBody);
   if (isDesktop()) {
     void notifyDesktop(title, body);
   } else if (isCapacitor()) {
