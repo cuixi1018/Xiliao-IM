@@ -1,0 +1,33 @@
+/* 深色模式：整体反色 + 色相回转，保留微信绿；媒体元素反色回来保持原色 */
+
+html[data-theme="dark"] {
+  filter: invert(1) hue-rotate(180deg);
+  /* 反色后原生滚动条也变浅，单独处理 */
+  color-scheme: dark;
+}
+
+/* 图片 / 视频 / 画布 / SVG 反色回来，保持原本色彩 */
+html[data-theme="dark"] img,
+html[data-theme="dark"] video,
+html[data-theme="dark"] canvas,
+html[data-theme="dark"] svg,
+html[data-theme="dark"] .liquid-glass-filter,
+html[data-theme="dark"] [style*="background-image"] {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* 头像、二维码等带背景色的元素同样反回 */
+html[data-theme="dark"] .ui-avatar,
+html[data-theme="dark"] .avatar,
+html[data-theme="dark"] [class*="avatar"],
+html[data-theme="dark"] [class*="qr"],
+html[data-theme="dark"] [class*="emoji"] {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* 主题色元素反色后 hue-rotate 已把绿保持为绿，无需额外处理 */
+
+/* 修复：反色后输入框光标、选中文本 */
+html[data-theme="dark"] ::selection {
+  background: rgba(7, 193, 96, 0.35);
+}
