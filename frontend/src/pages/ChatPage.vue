@@ -10,6 +10,7 @@ import QRCode from 'qrcode';
 import api from '../api.js';
 import { parseServerDate } from '../time-utils.js';
 import { isWebOnly } from '../platform.js';
+import { copyText } from '../clipboard-utils.js';
 import { useActiveRoom } from '../composables/useActiveRoom.js';
 import { useChatRoom } from '../composables/useChatRoom.js';
 import { useChatSidebar } from '../composables/useChatSidebar.js';
@@ -415,13 +416,12 @@ async function generateGroupQr() {
   } catch (e) { error.value = e.message; }
   finally { groupQrLoading.value = false; }
 }
-function copyGroupQrLink() {
+async function copyGroupQrLink() {
   if (!groupQrInfo.value) return;
   const url = `${window.location.origin}/join/${encodeURIComponent(groupQrInfo.value.token)}`;
-  navigator.clipboard?.writeText(url).then(() => {
-    error.value = '群邀请链接已复制';
-    window.setTimeout(() => { if (error.value === '群邀请链接已复制') error.value = ''; }, 1800);
-  }).catch(() => { error.value = '复制失败，请手动复制下方链接'; });
+  const ok = await copyText(url);
+  error.value = ok ? '群邀请链接已复制' : '复制失败，请手动复制下方链接';
+  window.setTimeout(() => { if (error.value === '群邀请链接已复制' || error.value === '复制失败，请手动复制下方链接') error.value = ''; }, 1800);
 }
 function saveGroupQr() {
   if (!groupQrDataUrl.value) return;
@@ -1109,7 +1109,7 @@ onBeforeUnmount(() => {
     <Transition name="modal-fade">
       <div v-if="showWelcome" class="modal-overlay" @click.self="showWelcome = false">
         <div class="modal-card welcome-card">
-          <div class="welcome-logo">🎉</div>
+          <div class="welcome-logo"><img src="/logo.svg" alt="细聊" /></div>
           <h3>欢迎来到细聊</h3>
           <p class="welcome-text">{{ welcomeText }}</p>
           <div class="modal-actions">
@@ -1980,7 +1980,8 @@ onBeforeUnmount(() => {
 .forward-row:hover { background: #f2f2f2; }
 .hint-text { padding: 16px; text-align: center; color: #aaa; font-size: 13px; }
 .welcome-card { text-align: center; }
-.welcome-logo { font-size: 48px; margin-bottom: 8px; }
+.welcome-logo { width: 72px; height: 72px; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; }
+.welcome-logo img { width: 72px; height: 72px; object-fit: contain; }
 .welcome-text { white-space: pre-wrap; text-align: left; font-size: 13px; line-height: 1.8; color: #555; background: #f7f7f7; padding: 14px; border-radius: 10px; }
 .group-manage-card { width: 520px; max-width: 92vw; }
 .gm-body { display: flex; flex-direction: column; gap: 16px; margin: 12px 0; max-height: 60vh; overflow-y: auto; }
