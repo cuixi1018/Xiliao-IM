@@ -40,6 +40,12 @@ function downloads() {
 }
 function androidUrl() { return downloads().android?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.01.apk'; }
 function windowsUrl() { return downloads().windows?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.01.exe'; }
+function macX64Url() { return downloads().mac?.x64?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.01-mac-x64.zip'; }
+function macArmUrl() { return downloads().mac?.arm64?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.01-mac-arm64.zip'; }
+function linuxUrl() { return downloads().linux?.url || 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.01-linux.AppImage'; }
+function iosUrl() { return downloads().ios?.url || 'https://xl.cuixi.qzz.io/'; }
+// Mac 芯片判断：Safari 的 platform 里带 Mac；Apple Silicon 用 navigator.hardwareConcurrency 无法可靠判断，默认推荐 Apple 芯片
+const macIsArm = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || '') && (navigator.hardwareConcurrency || 0) >= 8;
 </script>
 
 <template>
@@ -91,15 +97,21 @@ function windowsUrl() { return downloads().windows?.url || 'https://xl.cuixi.qzz
       <div class="dl-grid">
         <div class="dl-other">
           <div class="dl-other-ic"><svg viewBox="0 0 24 24" width="26" height="26" fill="#555"><path d="M16.4 12.9c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.2-2.8.8-3.5.8s-1.8-.8-2.9-.8c-1.5 0-2.9.9-3.6 2.2-1.6 2.7-.4 6.7 1.1 8.9.7 1.1 1.6 2.3 2.7 2.2 1.1 0 1.5-.7 2.8-.7s1.7.7 2.9.7c1.2 0 2-1.1 2.7-2.2.8-1.2 1.2-2.4 1.2-2.5-.1 0-2.9-1.1-3-4.1ZM14.1 5.9c.6-.7 1-1.7.9-2.7-.9 0-2 .6-2.6 1.3-.6.6-1 1.7-.9 2.6 1 .1 2-.5 2.6-1.2Z"/></svg></div>
-          <h3>Mac 桌面版</h3><p>macOS 10.15+</p><span class="dl-soon">即将推出</span>
+          <h3>Mac 桌面版</h3><p>macOS 10.15+</p>
+          <div class="dl-mac-links">
+            <a :href="macArmUrl()" download>Apple 芯片</a>
+            <a :href="macX64Url()" download>Intel 芯片</a>
+          </div>
         </div>
         <div class="dl-other">
           <div class="dl-other-ic"><svg viewBox="0 0 24 24" width="26" height="26" fill="#555"><rect x="6.5" y="2" width="11" height="20" rx="2.5" fill="none" stroke="#555" stroke-width="1.6"/><path d="M3.2 8v8M20.8 8v8" stroke="#555" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="19.3" r="0.9" fill="#555"/></svg></div>
-          <h3>iOS 版</h3><p>iPhone / iPad</p><span class="dl-soon">即将推出</span>
+          <h3>iOS 版</h3><p>iPhone / iPad</p>
+          <a :href="iosUrl()">添加到主屏幕 →</a>
         </div>
         <div class="dl-other">
           <div class="dl-other-ic"><svg viewBox="0 0 24 24" width="26" height="26" fill="#F5C518"><path d="M12 2C7.6 2 4 5.2 4 9.4c0 2 .8 3.6 2.2 5L4.7 20c-.1.4.3.7.6.5l3.2-2.1c1.1.4 2.3.6 3.5.6 4.4 0 8-3.2 8-7.4S16.4 2 12 2Zm-3.2 8.7a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Zm6.4 0a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Z"/></svg></div>
-          <h3>Linux 版</h3><p>桌面 Linux</p><span class="dl-soon">即将推出</span>
+          <h3>Linux 版</h3><p>桌面 Linux</p>
+          <a :href="linuxUrl()" download>下载 AppImage →</a>
         </div>
         <div class="dl-other">
           <div class="dl-other-ic"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#07c160" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 3.8 5.6 3.8 9S14.5 18.5 12 21c-2.5-2.5-3.8-5.6-3.8-9S9.5 5.5 12 3Z"/></svg></div>
@@ -112,6 +124,9 @@ function windowsUrl() { return downloads().windows?.url || 'https://xl.cuixi.qzz
         <ul>
           <li>Android：下载 APK 后打开安装，如提示"未知来源"，请在设置中允许安装。</li>
           <li>Windows：下载后双击 EXE 即可运行，无需安装；首次打开如提示安全警告，选择"仍要继续"。</li>
+          <li>Mac：按芯片选择 Intel 或 Apple 芯片版，解压后拖入「应用程序」；首次打开需在「系统设置 → 隐私与安全性」中允许。</li>
+          <li>Linux：下载 AppImage 后赋予可执行权限即可运行（右键 → 属性 → 允许作为程序执行）。</li>
+          <li>iOS：用 Safari 打开细聊网页，点「分享 → 添加到主屏幕」，即可像 APP 一样全屏使用并接收通知。</li>
           <li>各版本均加载线上服务，使用时请保持网络连接。</li>
           <li>APP 内可在「设置 → APP 专属设置」配置通知、隐私、应用锁与自动更新。</li>
         </ul>
@@ -159,6 +174,9 @@ function windowsUrl() { return downloads().windows?.url || 'https://xl.cuixi.qzz
 .dl-other p { font-size: 12px; color: #7a8a99; margin: 0; }
 .dl-soon { display: inline-block; margin-top: 8px; font-size: 12.5px; font-weight: 600; color: #a7b2bb; }
 .dl-other a { display: inline-block; margin-top: 8px; font-size: 12.5px; font-weight: 600; color: #06ad56; text-decoration: none; }
+.dl-mac-links { display: flex; gap: 10px; justify-content: center; margin-top: 8px; }
+.dl-mac-links a { margin-top: 0; padding: 4px 10px; border: 1px solid rgba(7,193,96,.3); border-radius: 8px; font-size: 12px; }
+.dl-mac-links a:hover { background: rgba(7,193,96,.08); }
 .dl-notes { margin-top: 30px; background: rgba(255,255,255,.82); border: 1px solid rgba(255,255,255,.8); border-radius: 20px; padding: 22px 24px; }
 .dl-notes h3 { font-size: 15px; margin: 0 0 12px; color: #06ad56; }
 .dl-notes ul { list-style: none; margin: 0; padding: 0; }
