@@ -152,6 +152,16 @@ img {
   }
 }
 
+/* 需要整页滚动的页面（如下载详情页）：解除上面的固定视口限制 */
+html.allow-scroll,
+html.allow-scroll body,
+html.allow-scroll #app {
+  height: auto !important;
+  min-height: 100% !important;
+  overflow: visible !important;
+  overscroll-behavior: auto !important;
+}
+
 @keyframes float-orb {
   from {
     transform: translate3d(0, 0, 0) scale(1);
