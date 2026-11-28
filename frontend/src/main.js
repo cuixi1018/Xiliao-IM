@@ -12,7 +12,12 @@ import './styles/chat.css';
 import './styles/chat-messages.css';
 import './styles/chat-attachments.css';
 import './styles/wx-theme.css';
+import './styles/dark-mode.css';
 import { initLiquidGlass } from './liquid-glass.js';
+import { initTheme } from './theme.js';
+
+// 初始化主题（需在挂载前设置 data-theme，避免闪白）
+initTheme();
 
 // 应用自定义背景
 const customBg = localStorage.getItem('customBackground');
