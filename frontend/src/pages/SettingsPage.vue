@@ -11,6 +11,7 @@ import { getPrefs, setPrefs } from '../app-prefs.js';
 import { copyText } from '../clipboard-utils.js';
 import { requestNotifyPermission } from '../notify-utils.js';
 import { getLocalAppVersion } from '../app-version-reader.js';
+import { openDownloadUrl } from '../download-utils.js';
 
 const router = useRouter();
 const session = computed(() => store.session);
@@ -379,7 +380,7 @@ function chooseTheme(mode) {
 // ===== 检查更新 =====
 // 本机版本从原生层读取（APK versionName / Electron app.getVersion），
 // 不能写死在前端——否则热加载网页后老用户也会被当成新版本，永远检测不到更新。
-const LOCAL_VERSION = ref('1.02');
+const LOCAL_VERSION = ref('1.03');
 const appInfo = ref(null);
 const checkingUpdate = ref(false);
 const showUpdateDialog = ref(false);
@@ -428,21 +429,23 @@ async function checkUpdate(manual = true) {
   }
 }
 
-// 用户确认后自动下载安装包
+// 用户确认后自动下载安装包（全端统一下载：APP 走原生 DownloadManager，
+// 桌面走系统浏览器，网页走锚点下载，规避 WebView 内 window.open 被拦截）
 function downloadInstaller() {
   const d = appInfo.value?.downloads || {};
   let url = '';
-  if (downloadPlatform === 'android') url = d.android?.url;
-  else if (downloadPlatform === 'windows') url = d.windows?.url;
-  if (!url) {
-    // 其他平台或无直链：跳转下载详情页自行选择
-    window.open('/download', '_blank');
-  } else {
-    window.open(url, '_blank');
-  }
+  let filename = '';
+  if (downloadPlatform === 'android') { url = d.android?.url; filename = d.android?.filename; }
+  else if (downloadPlatform === 'windows') { url = d.windows?.url; filename = d.windows?.filename; }
+  else { url = d.mac?.arm64?.url || d.mac?.x64?.url || d.linux?.url; filename = 'xiliao-installer'; }
   showUpdateDialog.value = false;
-  info.value = '已开始下载安装包';
-  setTimeout(clearMessage, 2500);
+  if (!url) {
+    openDownloadUrl('/download');
+  } else {
+    openDownloadUrl(url, filename);
+  }
+  info.value = '已开始下载安装包，请查看下载通知或浏览器下载栏';
+  setTimeout(clearMessage, 3000);
 }
 
 // ===== APP 专属偏好 =====
