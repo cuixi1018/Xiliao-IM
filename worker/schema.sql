@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
   is_admin INTEGER NOT NULL DEFAULT 0,
   session_version INTEGER NOT NULL DEFAULT 0,
   chat_id TEXT,
+  chat_id_changed_at TEXT,
   signature TEXT NOT NULL DEFAULT '',
   gender TEXT NOT NULL DEFAULT 'secret',
   birthdate TEXT NOT NULL DEFAULT '',
