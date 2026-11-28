@@ -10,6 +10,7 @@ import { isClientApp } from '../platform.js';
 import { getPrefs, setPrefs } from '../app-prefs.js';
 import { copyText } from '../clipboard-utils.js';
 import { requestNotifyPermission } from '../notify-utils.js';
+import { getLocalAppVersion } from '../app-version-reader.js';
 
 const router = useRouter();
 const session = computed(() => store.session);
@@ -376,7 +377,9 @@ function chooseTheme(mode) {
 }
 
 // ===== 检查更新 =====
-const LOCAL_VERSION = '1.01';
+// 本机版本从原生层读取（APK versionName / Electron app.getVersion），
+// 不能写死在前端——否则热加载网页后老用户也会被当成新版本，永远检测不到更新。
+const LOCAL_VERSION = ref('1.02');
 const appInfo = ref(null);
 const checkingUpdate = ref(false);
 const showUpdateDialog = ref(false);
@@ -402,18 +405,16 @@ async function checkUpdate(manual = true) {
   if (checkingUpdate.value) return;
   checkingUpdate.value = true;
   try {
+    // 本机版本从原生层读取（APK/Electron），网页端用兜底值
+    LOCAL_VERSION.value = await getLocalAppVersion();
     const data = await api.appVersion();
     appInfo.value = data;
-    const newFound = compareVersion(data.version, LOCAL_VERSION) > 0;
+    const newFound = compareVersion(data.version, LOCAL_VERSION.value) > 0;
     hasNewVersion.value = newFound;
     if (manual) {
-      if (newFound) {
-        // 发现新版本：弹出更新详情，让用户决定是否下载
-        showUpdateDialog.value = true;
-      } else {
-        info.value = `当前已是最新版本 v${LOCAL_VERSION}`;
-        setTimeout(clearMessage, 2500);
-      }
+      // 手动点击「查看版本与更新详情」：无论是否新版都弹窗展示详情，
+      // 让用户始终能看到版本号、更新说明和下载入口。
+      showUpdateDialog.value = true;
     } else if (newFound && getPrefs().autoDownload) {
       // 静默检查发现新版本：先询问用户，确认后再自动下载
       showUpdateDialog.value = true;
@@ -909,11 +910,12 @@ onMounted(() => { if (inClient) checkUpdate(false); });
           <div class="update-head">
             <div class="update-logo"><img src="/logo.svg" alt="细聊" /></div>
             <div>
-              <h3>发现新版本</h3>
+              <h3>{{ hasNewVersion ? '发现新版本' : '版本详情' }}</h3>
               <p class="sp-sub">v{{ appInfo?.version || '—' }} · {{ appInfo?.releasedAt || '' }}</p>
             </div>
           </div>
           <div class="update-body">
+            <p class="update-current">本机版本 v{{ LOCAL_VERSION }} · 最新版本 v{{ appInfo?.version || '—' }}</p>
             <div class="update-section-title">更新详情</div>
             <ul class="update-changelog">
               <li v-for="(line, i) in appInfo?.changelog || []" :key="i">{{ line }}</li>
@@ -921,8 +923,8 @@ onMounted(() => { if (inClient) checkUpdate(false); });
             <p v-if="appInfo?.forceUpdate" class="update-force">此版本为强制更新，建议尽快安装。</p>
           </div>
           <div class="sp-actions">
-            <button type="button" class="sp-btn" @click="showUpdateDialog = false">以后再说</button>
-            <button type="button" class="sp-btn primary" @click="downloadInstaller">立即下载</button>
+            <button type="button" class="sp-btn" @click="showUpdateDialog = false">{{ hasNewVersion ? '以后再说' : '关闭' }}</button>
+            <button type="button" class="sp-btn primary" @click="downloadInstaller">{{ hasNewVersion ? '下载更新' : '重新下载安装' }}</button>
           </div>
         </div>
       </div>
@@ -1566,6 +1568,7 @@ onMounted(() => { if (inClient) checkUpdate(false); });
 .update-head h3 { margin: 0 0 4px; font-size: 17px; }
 .update-head .sp-sub { margin: 0; }
 .update-body { padding: 14px 0 4px; }
+.update-current { margin: 0 0 12px; padding: 8px 12px; background: rgba(7,193,96,.08); border-radius: 8px; font-size: 12px; color: #06ad56; }
 .update-section-title { font-size: 13px; font-weight: 600; color: #191919; margin-bottom: 8px; }
 .update-changelog { margin: 0; padding-left: 18px; }
 .update-changelog li { font-size: 13px; line-height: 1.7; color: #555; margin-bottom: 3px; }
