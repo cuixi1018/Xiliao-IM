@@ -70,15 +70,15 @@ export function randomToken(byteLength = 24) {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
-// 细聊号：用户名 + '#' + 4 位随机后缀（大写字母/数字），如 cuixi#8F3A
-const CHAT_ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+// 细聊号：仅字母数字（小写），4-20 位，无 # 或其他符号，如 cuixi8f3a
+const CHAT_ID_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 
 export function sanitizeChatUsername(username) {
-  // _username_ 里允许的字符收敛为字母数字下划线，作为细聊号前缀
+  // 收敛为小写字母数字，作为细聊号前缀（保留 4 位给随机后缀，总长不超过 20）
   return String(username || '')
     .toLowerCase()
-    .replace(/[^a-z0-9_]/g, '')
-    .slice(0, 20) || 'user';
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, 16) || 'user';
 }
 
 export function generateChatId(username) {
@@ -87,5 +87,5 @@ export function generateChatId(username) {
   for (const byte of bytes) {
     suffix += CHAT_ID_ALPHABET[byte % CHAT_ID_ALPHABET.length];
   }
-  return `${sanitizeChatUsername(username)}#${suffix}`;
+  return `${sanitizeChatUsername(username)}${suffix}`;
 }
