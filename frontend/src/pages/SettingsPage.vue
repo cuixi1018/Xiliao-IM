@@ -7,6 +7,7 @@ import UiAvatar from '../components/ui/Avatar.vue';
 import QRCode from 'qrcode';
 import { getTheme, setTheme as applyTheme } from '../theme.js';
 import { isClientApp } from '../platform.js';
+import { getPrefs, setPrefs } from '../app-prefs.js';
 
 const router = useRouter();
 const session = computed(() => store.session);
@@ -361,28 +362,18 @@ function chooseTheme(mode) {
 }
 
 // ===== 检查更新 =====
+const LOCAL_VERSION = '1.01';
 const appInfo = ref(null);
 const checkingUpdate = ref(false);
-async function checkUpdate(manual = true) {
-  if (checkingUpdate.value) return;
-  checkingUpdate.value = true;
-  try {
-    const data = await api.appVersion();
-    appInfo.value = data;
-    const localVersion = '1.0.0';
-    const hasNew = compareVersion(data.version, localVersion) > 0;
-    if (manual) {
-      info.value = hasNew ? `发现新版本 ${data.version}` : `当前已是最新版本 ${localVersion}`;
-      clearMessage();
-    }
-    return data;
-  } catch (e) {
-    if (manual) { error.value = '检查更新失败，请稍后重试'; clearMessage(); }
-    return null;
-  } finally {
-    checkingUpdate.value = false;
-  }
-}
+const showUpdateDialog = ref(false);
+const hasNewVersion = ref(false);
+const downloadPlatform = (() => {
+  const ua = navigator.userAgent || '';
+  if (/android/i.test(ua)) return 'android';
+  if (/windows/i.test(ua)) return 'windows';
+  return 'other';
+})();
+
 function compareVersion(a, b) {
   const pa = String(a || '').split('.').map(Number);
   const pb = String(b || '').split('.').map(Number);
@@ -392,6 +383,86 @@ function compareVersion(a, b) {
   }
   return 0;
 }
+
+async function checkUpdate(manual = true) {
+  if (checkingUpdate.value) return;
+  checkingUpdate.value = true;
+  try {
+    const data = await api.appVersion();
+    appInfo.value = data;
+    const newFound = compareVersion(data.version, LOCAL_VERSION) > 0;
+    hasNewVersion.value = newFound;
+    if (manual) {
+      if (newFound) {
+        // 发现新版本：弹出更新详情，让用户决定是否下载
+        showUpdateDialog.value = true;
+      } else {
+        info.value = `当前已是最新版本 v${LOCAL_VERSION}`;
+        setTimeout(clearMessage, 2500);
+      }
+    } else if (newFound && getPrefs().autoDownload) {
+      // 静默检查发现新版本：先询问用户，确认后再自动下载
+      showUpdateDialog.value = true;
+    }
+    return data;
+  } catch (e) {
+    if (manual) { error.value = '检查更新失败，请稍后重试'; setTimeout(clearMessage, 2500); }
+    return null;
+  } finally {
+    checkingUpdate.value = false;
+  }
+}
+
+// 用户确认后自动下载安装包
+function downloadInstaller() {
+  const d = appInfo.value?.downloads || {};
+  let url = '';
+  if (downloadPlatform === 'android') url = d.android?.url;
+  else if (downloadPlatform === 'windows') url = d.windows?.url;
+  if (!url) {
+    // 其他平台或无直链：跳转下载详情页自行选择
+    window.open('https://aaf704dd0c17f5001.app.workbuddy.host/?sharecode=CO6F5BDW2D', '_blank');
+  } else {
+    window.open(url, '_blank');
+  }
+  showUpdateDialog.value = false;
+  info.value = '已开始下载安装包';
+  setTimeout(clearMessage, 2500);
+}
+
+// ===== APP 专属偏好 =====
+const prefs = ref(getPrefs());
+function updatePref(patch) {
+  prefs.value = setPrefs(patch);
+}
+
+// 应用锁：开启时需先设置 4 位 PIN
+const showPinDialog = ref(false);
+const pinDraft = ref('');
+const pinError = ref('');
+function onAppLockToggle(enabled) {
+  if (enabled) {
+    pinDraft.value = '';
+    pinError.value = '';
+    showPinDialog.value = true;
+  } else {
+    updatePref({ appLockEnabled: false, appLockPin: '' });
+    info.value = '应用锁已关闭';
+    setTimeout(clearMessage, 2000);
+  }
+}
+function saveAppLockPin() {
+  const pin = String(pinDraft.value || '').trim();
+  if (!/^\d{4}$/.test(pin)) {
+    pinError.value = '请输入 4 位数字 PIN';
+    return;
+  }
+  updatePref({ appLockEnabled: true, appLockPin: pin });
+  showPinDialog.value = false;
+  info.value = '应用锁已开启';
+  setTimeout(clearMessage, 2000);
+}
+
 
 // ===== 清除本机缓存（不动服务器数据）=====
 const clearingCache = ref(false);
@@ -567,7 +638,7 @@ onMounted(() => { if (inClient) checkUpdate(false); });
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/><path d="M12 7v5l3 2"/></svg>
               </span>
               <span class="setting-row__label">检查更新</span>
-              <span class="setting-row__value">{{ checkingUpdate ? '检查中…' : (appInfo ? 'v' + appInfo.version : 'v1.0.0') }}</span>
+              <span class="setting-row__value">{{ checkingUpdate ? '检查中…' : (hasNewVersion ? '有新版本' : 'v' + LOCAL_VERSION) }}</span>
             </button>
             <!-- 清除缓存 -->
             <button type="button" class="setting-row" :disabled="clearingCache" @click="clearLocalCache">
@@ -586,6 +657,68 @@ onMounted(() => { if (inClient) checkUpdate(false); });
               <span class="setting-row__value">{{ clearingChat ? '清理中…' : '' }}</span>
             </button>
           </template>
+        </section>
+
+        <!-- APP 专属设置：仅客户端显示 -->
+        <section v-if="inClient" class="settings-section">
+          <h2>APP 专属设置</h2>
+
+          <!-- 通知增强 -->
+          <div class="pref-group-title">消息通知</div>
+          <label class="pref-row">
+            <span class="pref-row__icon">🔔</span>
+            <span class="pref-row__label">消息通知</span>
+            <input type="checkbox" class="pref-switch" :checked="prefs.notifyEnabled" @change="updatePref({ notifyEnabled: $event.target.checked })" />
+          </label>
+          <label class="pref-row">
+            <span class="pref-row__icon">🌙</span>
+            <span class="pref-row__label">免打扰时段</span>
+            <input type="checkbox" class="pref-switch" :checked="prefs.quietEnabled" @change="updatePref({ quietEnabled: $event.target.checked })" />
+          </label>
+          <div v-if="prefs.quietEnabled" class="pref-time-range">
+            <input type="time" :value="prefs.quietStart" @change="updatePref({ quietStart: $event.target.value })" />
+            <span>至</span>
+            <input type="time" :value="prefs.quietEnd" @change="updatePref({ quietEnd: $event.target.value })" />
+          </div>
+          <label class="pref-row">
+            <span class="pref-row__icon">💬</span>
+            <span class="pref-row__label">显示消息内容</span>
+            <input type="checkbox" class="pref-switch" :checked="prefs.previewEnabled" @change="updatePref({ previewEnabled: $event.target.checked })" />
+          </label>
+
+          <!-- 应用内更新 -->
+          <div class="pref-group-title">应用更新</div>
+          <label class="pref-row">
+            <span class="pref-row__icon">⬇️</span>
+            <span class="pref-row__label">发现新版本后询问下载</span>
+            <input type="checkbox" class="pref-switch" :checked="prefs.autoDownload" @change="updatePref({ autoDownload: $event.target.checked })" />
+          </label>
+          <button type="button" class="setting-row" :disabled="checkingUpdate" @click="checkUpdate(true)">
+            <span class="setting-row__icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/><path d="M12 7v5l3 2"/></svg>
+            </span>
+            <span class="setting-row__label">查看版本与更新详情</span>
+            <span class="setting-row__value">{{ hasNewVersion ? '有新版本' : 'v' + LOCAL_VERSION }}</span>
+          </button>
+
+          <!-- 安全隐私 -->
+          <div class="pref-group-title">安全与隐私</div>
+          <label class="pref-row">
+            <span class="pref-row__icon">🕶️</span>
+            <span class="pref-row__label">隐私模式（隐藏通知内容）</span>
+            <input type="checkbox" class="pref-switch" :checked="prefs.privacyMode" @change="updatePref({ privacyMode: $event.target.checked })" />
+          </label>
+          <label class="pref-row">
+            <span class="pref-row__icon">🔒</span>
+            <span class="pref-row__label">应用锁（启动需 PIN）</span>
+            <input type="checkbox" class="pref-switch" :checked="prefs.appLockEnabled" @change="onAppLockToggle($event.target.checked)" />
+          </label>
+          <button v-if="prefs.appLockEnabled" type="button" class="setting-row" @click="showPinDialog = true">
+            <span class="setting-row__icon">🔑</span>
+            <span class="setting-row__label">修改应用锁 PIN</span>
+            <span class="setting-row__value">已设置</span>
+          </button>
+          <p class="pref-hint">以上设置仅保存在本机，清除缓存或卸载 APP 后会重置。</p>
         </section>
 
         <section class="settings-section">
@@ -730,6 +863,48 @@ onMounted(() => { if (inClient) checkUpdate(false); });
             <button type="button" class="sp-btn danger" :disabled="deactivating" @click="confirmDeactivate">
               {{ deactivating ? '注销中' : '确认注销' }}
             </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 更新详情弹窗 -->
+    <Transition name="modal-fade">
+      <div v-if="showUpdateDialog" class="sp-overlay" @click.self="showUpdateDialog = false">
+        <div class="sp-dialog update-dialog">
+          <div class="update-head">
+            <div class="update-logo"><img src="/logo.svg" alt="细聊" /></div>
+            <div>
+              <h3>发现新版本</h3>
+              <p class="sp-sub">v{{ appInfo?.version || '—' }} · {{ appInfo?.releasedAt || '' }}</p>
+            </div>
+          </div>
+          <div class="update-body">
+            <div class="update-section-title">更新详情</div>
+            <ul class="update-changelog">
+              <li v-for="(line, i) in appInfo?.changelog || []" :key="i">{{ line }}</li>
+            </ul>
+            <p v-if="appInfo?.forceUpdate" class="update-force">此版本为强制更新，建议尽快安装。</p>
+          </div>
+          <div class="sp-actions">
+            <button type="button" class="sp-btn" @click="showUpdateDialog = false">以后再说</button>
+            <button type="button" class="sp-btn primary" @click="downloadInstaller">立即下载</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 应用锁 PIN 设置弹窗 -->
+    <Transition name="modal-fade">
+      <div v-if="showPinDialog" class="sp-overlay" @click.self="showPinDialog = false">
+        <div class="sp-dialog">
+          <h3>设置应用锁 PIN</h3>
+          <p class="sp-sub">设置 4 位数字 PIN，开启后每次启动 APP 都需要输入。</p>
+          <input v-model="pinDraft" class="sp-input" type="tel" maxlength="4" placeholder="4 位数字" inputmode="numeric" />
+          <p v-if="pinError" class="sp-sub" style="color:#c0392b">{{ pinError }}</p>
+          <div class="sp-actions">
+            <button type="button" class="sp-btn" @click="showPinDialog = false">取消</button>
+            <button type="button" class="sp-btn primary" @click="saveAppLockPin">确认开启</button>
           </div>
         </div>
       </div>
@@ -1332,4 +1507,33 @@ onMounted(() => { if (inClient) checkUpdate(false); });
 .logout-btn:hover { background: #f7f7f7; }
 .deactivate-link { display: inline-block; margin-top: 16px; padding: 0; border: none; background: none; color: #e64340; font-size: 13px; cursor: pointer; text-decoration: underline; }
 .deactivate-hint { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: #999; }
+
+/* APP 专属设置：偏好行 / 开关 */
+.pref-group-title { margin: 16px 0 2px; font-size: 12px; font-weight: 600; color: #07c160; letter-spacing: 0.3px; }
+.pref-row { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-top: 8px; border: 1px solid rgba(91,141,191,0.14); border-radius: 12px; background: rgba(255,255,255,0.6); cursor: pointer; }
+.pref-row__icon { width: 26px; flex: 0 0 26px; text-align: center; font-size: 17px; }
+.pref-row__label { flex: 1; font-size: 14px; font-weight: 500; color: #191919; }
+.pref-switch { appearance: none; -webkit-appearance: none; width: 44px; height: 25px; border-radius: 13px; background: #d8dde3; position: relative; cursor: pointer; transition: background 0.2s; flex: 0 0 44px; }
+.pref-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 21px; height: 21px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: transform 0.2s; }
+.pref-switch:checked { background: #07c160; }
+.pref-switch:checked::after { transform: translateX(19px); }
+.pref-time-range { display: flex; align-items: center; gap: 10px; padding: 8px 14px 4px; color: #888; font-size: 13px; }
+.pref-time-range input { flex: 1; padding: 7px 8px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; background: #fff; }
+.pref-hint { margin: 14px 2px 0; font-size: 11.5px; line-height: 1.6; color: #aaa; }
+
+/* 更新详情弹窗 */
+.update-dialog { text-align: left; }
+.update-head { display: flex; align-items: center; gap: 14px; padding-bottom: 14px; border-bottom: 1px solid #eee; }
+.update-logo { width: 52px; height: 52px; flex: 0 0 52px; border-radius: 12px; background: #eaf8ef; display: flex; align-items: center; justify-content: center; }
+.update-logo img { width: 38px; height: 38px; object-fit: contain; }
+.update-head h3 { margin: 0 0 4px; font-size: 17px; }
+.update-head .sp-sub { margin: 0; }
+.update-body { padding: 14px 0 4px; }
+.update-section-title { font-size: 13px; font-weight: 600; color: #191919; margin-bottom: 8px; }
+.update-changelog { margin: 0; padding-left: 18px; }
+.update-changelog li { font-size: 13px; line-height: 1.7; color: #555; margin-bottom: 3px; }
+.update-changelog li::marker { color: #07c160; }
+.update-force { margin: 10px 0 0; font-size: 12px; color: #e64340; }
+.update-dialog .sp-actions { justify-content: stretch; }
+.update-dialog .sp-actions .sp-btn { flex: 1; }
 </style>
