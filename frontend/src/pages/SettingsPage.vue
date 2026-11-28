@@ -421,7 +421,7 @@ function downloadInstaller() {
   else if (downloadPlatform === 'windows') url = d.windows?.url;
   if (!url) {
     // 其他平台或无直链：跳转下载详情页自行选择
-    window.open('https://aaf704dd0c17f5001.app.workbuddy.host/?sharecode=CO6F5BDW2D', '_blank');
+    window.open('/download', '_blank');
   } else {
     window.open(url, '_blank');
   }
