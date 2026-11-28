@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import store from './store.js';
 import LoginPage from './pages/LoginPage.vue';
+import DownloadPage from './pages/DownloadPage.vue';
 import RegisterPage from './pages/RegisterPage.vue';
 import RegisterOAuthPage from './pages/RegisterOAuthPage.vue';
 import ContactsPage from './pages/ContactsPage.vue';
@@ -32,6 +33,12 @@ const router = createRouter({
       name: 'auth-bridge',
       component: AuthBridgePage,
       meta: { public: true }
+    },
+    {
+      path: '/download',
+      name: 'download',
+      component: DownloadPage,
+      meta: { public: true, transition: 'page' }
     },
     {
       path: '/register/:token',
