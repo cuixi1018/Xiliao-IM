@@ -1,8 +1,16 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AppDownloadPrompt from './components/AppDownloadPrompt.vue';
 import { getPrefs } from './app-prefs.js';
 import { isClientApp } from './platform.js';
+import store from './store.js';
+import {
+  startGlobalInbox,
+  stopGlobalInbox,
+  subscribeInbox,
+  isActiveRoom
+} from './composables/useGlobalInbox.js';
+import { showMessageNotification, requestNotifyPermission } from './notify-utils.js';
 
 // 应用锁：APP 启动时若已设置 PIN 且本次会话未解锁，则显示锁屏
 const LOCK_KEY = 'xiliao-unlocked-session';
@@ -10,13 +18,56 @@ const locked = ref(false);
 const pinInput = ref('');
 const pinErr = ref('');
 
+let unsubscribeInbox = null;
+
+function setupInbox() {
+  if (!store.session) return;
+  startGlobalInbox();
+  // APP 端主动申请通知权限（Android 13+ 需要运行时授权）
+  void requestNotifyPermission();
+  if (!unsubscribeInbox) {
+    unsubscribeInbox = subscribeInbox((payload) => {
+      if (!payload || payload.type !== 'room_message' || !payload.room) return;
+      // 正在查看的会话不弹通知（消息会直接显示在聊天页）
+      if (isActiveRoom(payload.room)) return;
+      showMessageNotification({
+        room: payload.room,
+        senderName: payload.senderName,
+        preview: payload.preview
+      });
+    });
+  }
+}
+
+function teardownInbox() {
+  if (unsubscribeInbox) {
+    unsubscribeInbox();
+    unsubscribeInbox = null;
+  }
+  stopGlobalInbox();
+}
+
 onMounted(() => {
+  // 登录态变化时启动/关闭全局收件箱（覆盖登录后进入、退出登录、会话恢复等场景）
+  watch(
+    () => store.session,
+    (session) => {
+      if (session) setupInbox();
+      else teardownInbox();
+    },
+    { immediate: true }
+  );
+
   if (!isClientApp()) return;
   const prefs = getPrefs();
   const unlocked = sessionStorage.getItem(LOCK_KEY) === '1';
   if (prefs.appLockEnabled && prefs.appLockPin && !unlocked) {
     locked.value = true;
   }
+});
+
+onBeforeUnmount(() => {
+  teardownInbox();
 });
 
 function unlock() {
