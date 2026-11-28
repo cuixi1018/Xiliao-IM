@@ -152,7 +152,7 @@ function onDownloadClick(e) {
 .dl-page { min-height: 100vh; box-sizing: border-box; padding: 0 18px 56px; background: radial-gradient(900px 500px at 12% -5%, rgba(7,193,96,.2), transparent 60%), radial-gradient(800px 500px at 100% 10%, rgba(91,163,191,.18), transparent 60%), linear-gradient(160deg,#f2f6f8,#e6ecef); }
 .dl-wrap { max-width: 720px; margin: 0 auto; }
 .dl-header { text-align: center; padding: 48px 18px 26px; }
-.dl-logo { width: 96px; height: 96px; margin: 0 auto 18px; border-radius: 24px; background: linear-gradient(145deg,#fff,#eef7f1); display: flex; align-items: center; justify-content: center; box-shadow: 0 14px 36px rgba(7,193,96,.18), inset 0 1px 0 #fff; }
+.dl-logo { width: 104px; height: 104px; margin: 0 auto 18px; display: flex; align-items: center; justify-content: center; }
 .dl-logo img { width: 78px; height: 78px; object-fit: contain; }
 .dl-header h1 { font-size: 30px; font-weight: 800; letter-spacing: 1px; margin: 0; color: #191919; }
 .dl-tagline { color: #7a8a99; margin: 6px 0 0; font-size: 15px; }
