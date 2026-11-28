@@ -187,6 +187,7 @@ async function main() {
   // 1) 用户列
   console.log("[users]");
   await addColumn("users", "chat_id", "TEXT");
+  await addColumn("users", "chat_id_changed_at", "TEXT");
   await addColumn("users", "signature", "TEXT NOT NULL DEFAULT ''");
   await addColumn("users", "gender", "TEXT NOT NULL DEFAULT 'secret'");
   await addColumn("users", "birthdate", "TEXT NOT NULL DEFAULT ''");
