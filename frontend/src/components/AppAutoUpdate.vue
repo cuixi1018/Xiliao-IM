@@ -101,7 +101,7 @@ function download() {
 .upd-box { position: relative; width: min(360px, 100%); box-sizing: border-box; padding: 28px 24px 22px; border-radius: 20px; text-align: center; background: linear-gradient(180deg,#fff,#f6faf8); border: 1px solid rgba(255,255,255,.85); box-shadow: 0 24px 70px rgba(26,35,50,.24); }
 .upd-close { position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; border: none; border-radius: 50%; background: rgba(0,0,0,.04); color: #999; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .upd-close:hover { background: rgba(0,0,0,.08); color: #555; }
-.upd-icon { width: 60px; height: 60px; margin: 0 auto 12px; border-radius: 16px; background: #eaf8ef; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(7,193,96,.16); }
+.upd-icon { width: 64px; height: 64px; margin: 0 auto 12px; display: flex; align-items: center; justify-content: center; }
 .upd-icon img { width: 44px; height: 44px; object-fit: contain; }
 .upd-title { margin: 0 0 4px; font-size: 18px; font-weight: 700; color: #191919; }
 .upd-ver { margin: 0 0 16px; font-size: 12.5px; font-weight: 600; color: #07c160; }
