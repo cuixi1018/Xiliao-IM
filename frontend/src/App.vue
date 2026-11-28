@@ -1,4 +1,5 @@
 <script setup>
+import AppDownloadPrompt from './components/AppDownloadPrompt.vue';
 </script>
 
 <template>
@@ -7,6 +8,7 @@
       <component :is="Component" :key="route.path" />
     </Transition>
   </router-view>
+  <AppDownloadPrompt />
 </template>
 
 <style>
