@@ -9,6 +9,7 @@ import WechatNav from '../components/WechatNav.vue';
 import QRCode from 'qrcode';
 import api from '../api.js';
 import { parseServerDate } from '../time-utils.js';
+import { isWebOnly } from '../platform.js';
 import { useActiveRoom } from '../composables/useActiveRoom.js';
 import { useChatRoom } from '../composables/useChatRoom.js';
 import { useChatSidebar } from '../composables/useChatSidebar.js';
@@ -30,6 +31,11 @@ const {
 } = useChatSidebar({ error, applyActiveChannel, selectDm });
 
 const showCollapsed = ref(false);
+
+// 网页端聊天右上角下载 APP 入口，跳转下载详情页
+const showDownloadEntry = isWebOnly();
+const APP_DOWNLOAD_PAGE = 'https://aaf704dd0c17f5001.app.workbuddy.host/?sharecode=CO6F5BDW2D';
+function goDownloadApp() { window.open(APP_DOWNLOAD_PAGE, '_blank'); }
 
 const {
   messages, loading, wsStatus, composerText, composerQuote, pendingAttachment, sending,
@@ -787,6 +793,9 @@ onBeforeUnmount(() => {
           </button>
           <h2 :class="{ 'chat-header__title-link': activeRoom.kind === 'dm' }" @click="activeRoom.kind === 'dm' && viewActiveRoomProfile()">{{ roomLabel(activeRoom) }}</h2>
           <div class="chat-header__status" :class="wsConnected ? 'online' : 'offline'"></div>
+          <button v-if="showDownloadEntry" type="button" class="chat-header__download" title="下载 APP" @click="goDownloadApp">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M5 21h14"/></svg>
+          </button>
           <button type="button" class="chat-header__profile" title="查看资料" @click="viewActiveRoomProfile">👤</button>
           <button type="button" class="chat-header__more" title="更多" @click="showMoreMenu = !showMoreMenu">⋯</button>
           <div v-if="showMoreMenu" class="more-menu">
@@ -1462,6 +1471,7 @@ onBeforeUnmount(() => {
   height: 8px;
   border-radius: 50%;
   background: #d1d5db;
+  margin-right: auto;
 }
 
 .chat-header__status.online {
@@ -1890,7 +1900,9 @@ onBeforeUnmount(() => {
 
 /* 微信风格新增组件 */
 .chat-header__more { border: none; background: transparent; color: #54656f; font-size: 24px; line-height: 1; cursor: pointer; padding: 0 8px; }
-.chat-header__profile { border: none; background: transparent; color: #54656f; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 6px; margin-left: auto; }
+.chat-header__profile { border: none; background: transparent; color: #54656f; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 6px; }
+.chat-header__download { border: none; background: transparent; color: #07c160; line-height: 1; cursor: pointer; padding: 0 6px; display: flex; align-items: center; }
+.chat-header__download:hover { color: #06ad56; }
 .chat-header__title-link { cursor: pointer; }
 .chat-header__title-link:hover { color: #07c160; }
 .chat-header { position: relative; }
