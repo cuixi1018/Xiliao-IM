@@ -1,6 +1,7 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import AppDownloadPrompt from './components/AppDownloadPrompt.vue';
+import OfflineBanner from './components/OfflineBanner.vue';
 import { getPrefs } from './app-prefs.js';
 import { isClientApp } from './platform.js';
 import store from './store.js';
@@ -19,6 +20,7 @@ const pinInput = ref('');
 const pinErr = ref('');
 
 let unsubscribeInbox = null;
+function handleOnline() { startGlobalInbox(); }
 
 function setupInbox() {
   if (!store.session) return;
@@ -48,6 +50,9 @@ function teardownInbox() {
 }
 
 onMounted(() => {
+  // 网络恢复时主动重连收件箱，保证离线期间断开的消息连接尽快恢复
+  window.addEventListener('online', handleOnline);
+
   // 登录态变化时启动/关闭全局收件箱（覆盖登录后进入、退出登录、会话恢复等场景）
   watch(
     () => store.session,
@@ -67,6 +72,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener('online', handleOnline);
   teardownInbox();
 });
 
@@ -90,6 +96,7 @@ function unlock() {
       <component :is="Component" :key="route.path" />
     </Transition>
   </router-view>
+  <OfflineBanner />
   <AppDownloadPrompt />
 
   <!-- 应用锁屏 -->
