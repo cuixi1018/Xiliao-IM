@@ -4,7 +4,7 @@
 import { onMounted, ref } from 'vue';
 import { isWebOnly } from '../platform.js';
 
-const APP_DOWNLOAD_PAGE = import.meta.env.VITE_APP_DOWNLOAD_URL || 'https://aaf704dd0c17f5001.app.workbuddy.host/?sharecode=CO6F5BDW2D';
+const APP_DOWNLOAD_PAGE = import.meta.env.VITE_APP_DOWNLOAD_URL || '/download';
 const APP_VERSION = '1.01';
 
 const visible = ref(false);
