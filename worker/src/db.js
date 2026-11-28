@@ -12,8 +12,9 @@ export async function makeUniqueChatId(db, username) {
       return chatId;
     }
   }
-  // 极端兜底：追加时间戳，几乎不可能冲突
-  return `${generateChatId(username)}${Date.now().toString(36).slice(-4).toUpperCase()}`;
+  // 极端兜底：追加时间戳（小写），几乎不可能冲突，且仍为纯字母数字、总长合规
+  const base = generateChatId(username).slice(0, 16);
+  return `${base}${Date.now().toString(36).slice(-4).toLowerCase()}`;
 }
 
 function toNullableNumber(value) {
