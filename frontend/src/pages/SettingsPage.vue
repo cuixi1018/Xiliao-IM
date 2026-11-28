@@ -8,6 +8,8 @@ import QRCode from 'qrcode';
 import { getTheme, setTheme as applyTheme } from '../theme.js';
 import { isClientApp } from '../platform.js';
 import { getPrefs, setPrefs } from '../app-prefs.js';
+import { copyText } from '../clipboard-utils.js';
+import { requestNotifyPermission } from '../notify-utils.js';
 
 const router = useRouter();
 const session = computed(() => store.session);
@@ -28,13 +30,14 @@ const passwordForm = reactive({
 });
 
 const copied = ref(false);
-function copyChatId() {
+async function copyChatId() {
   const id = session.value?.chatId || '';
   if (!id) return;
-  navigator.clipboard?.writeText(id).then(() => {
+  const ok = await copyText(id);
+  if (ok) {
     copied.value = true;
     setTimeout(() => { copied.value = false; }, 2000);
-  }).catch(() => {});
+  }
 }
 
 // ===== 个人二维码 =====
@@ -64,21 +67,32 @@ function saveQr() {
 const chatIdForm = reactive({ value: '' });
 const changingChatId = ref(false);
 const showChatIdDialog = ref(false);
+const chatIdError = ref(''); // 错误直接显示在修改框内
+
 function openChangeChatId() {
-  chatIdForm.value = session.value?.chatId || '';
+  // 旧号含 #（如 abc#12cd），展示时去掉 # 并拼接，方便用户在此基础上修改
+  const cur = String(session.value?.chatId || '');
+  chatIdForm.value = cur.includes('#') ? cur.replace('#', '') : cur;
+  chatIdError.value = '';
   showChatIdDialog.value = true;
 }
 async function changeChatId() {
+  chatIdError.value = '';
+  const next = chatIdForm.value.trim().toLowerCase();
+  if (!/^[a-z0-9]{4,20}$/.test(next)) {
+    chatIdError.value = '只能包含字母和数字，长度 4-20 位，不能包含 # 或其他符号';
+    return;
+  }
   changingChatId.value = true;
-  clearMessage();
   try {
-    const data = await api.updateChatId(chatIdForm.value.trim().toLowerCase());
-    const next = await api.session();
-    store.setSession(next.session);
+    await api.updateChatId(next);
+    const fresh = await api.session();
+    store.setSession(fresh.session);
     showChatIdDialog.value = false;
-    info.value = '细聊号已修改';
+    info.value = '细聊号已修改，7 天后可再次修改';
   } catch (e) {
-    error.value = e.message;
+    // 错误展示在修改框内，用户无需离开弹窗即可看到
+    chatIdError.value = e.message || '修改失败，请稍后重试';
   } finally {
     changingChatId.value = false;
   }
@@ -436,6 +450,13 @@ function updatePref(patch) {
   prefs.value = setPrefs(patch);
 }
 
+// 主动申请系统通知权限（Android 13+ / iOS），解决手机收不到消息提醒
+async function onEnableNotifyPermission() {
+  await requestNotifyPermission();
+  info.value = '已请求通知权限，若未弹出请到系统设置中开启细聊通知';
+  setTimeout(clearMessage, 3500);
+}
+
 // 应用锁：开启时需先设置 4 位 PIN
 const showPinDialog = ref(false);
 const pinDraft = ref('');
@@ -685,6 +706,11 @@ onMounted(() => { if (inClient) checkUpdate(false); });
             <span class="pref-row__label">显示消息内容</span>
             <input type="checkbox" class="pref-switch" :checked="prefs.previewEnabled" @change="updatePref({ previewEnabled: $event.target.checked })" />
           </label>
+          <button type="button" class="setting-row" @click="onEnableNotifyPermission">
+            <span class="setting-row__icon">🔔</span>
+            <span class="setting-row__label">开启系统通知权限</span>
+            <span class="setting-row__value">点击授权</span>
+          </button>
 
           <!-- 应用内更新 -->
           <div class="pref-group-title">应用更新</div>
@@ -841,8 +867,16 @@ onMounted(() => { if (inClient) checkUpdate(false); });
       <div v-if="showChatIdDialog" class="sp-overlay" @click.self="showChatIdDialog = false">
         <div class="sp-dialog">
           <h3>修改细聊号</h3>
-          <p class="sp-sub">格式：前缀#后缀（如 xiliao#8f3a），全局唯一。修改后别人需用新号添加你。</p>
-          <input v-model="chatIdForm.value" class="sp-input" placeholder="前缀#后缀" />
+          <p class="sp-sub">仅可包含字母和数字，长度 4-20 位，全局唯一。每 7 天只能修改一次，修改后别人需用新号添加你。</p>
+          <input
+            v-model="chatIdForm.value"
+            class="sp-input"
+            :class="{ 'sp-input--error': chatIdError }"
+            placeholder="字母或数字，如 xiliao520"
+            @input="chatIdError = ''"
+            @keyup.enter="changeChatId"
+          />
+          <p v-if="chatIdError" class="sp-field-error">{{ chatIdError }}</p>
           <div class="sp-actions">
             <button type="button" class="sp-btn" @click="showChatIdDialog = false">取消</button>
             <button type="button" class="sp-btn primary" :disabled="changingChatId" @click="changeChatId">保存</button>
@@ -1498,6 +1532,9 @@ onMounted(() => { if (inClient) checkUpdate(false); });
 .qr-id { font-size: 13px; color: #07c160; font-weight: 600; margin: 8px 0 0; }
 .sp-input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; }
 .sp-input:focus { border-color: #07c160; }
+.sp-input--error { border-color: #e64340 !important; }
+.sp-input--error:focus { border-color: #e64340; }
+.sp-field-error { margin: 8px 0 0; text-align: left; font-size: 12px; line-height: 1.5; color: #e64340; }
 .sp-actions { display: flex; gap: 8px; margin-top: 18px; justify-content: center; }
 .sp-btn { padding: 9px 20px; border: 1px solid #ddd; border-radius: 8px; background: #fff; color: #555; font-size: 13px; cursor: pointer; }
 .sp-btn.primary { background: #07c160; border-color: #07c160; color: #fff; }
