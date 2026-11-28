@@ -4,12 +4,15 @@
 const BASE = 'https://xl.cuixi.qzz.io/files/releases/';
 
 const APP_VERSION = {
-  version: '1.02',
-  versionCode: 3,
+  version: '1.03',
+  versionCode: 4,
   releasedAt: '2026-11-28',
   forceUpdate: false,
   developer: 'cuixi1018',
   changelog: [
+    '修复点击「下载更新」没反应：改用系统级下载，APP/电脑/网页全端可用',
+    '打开客户端自动检查更新，发现新版即时提醒',
+    '网页版右上角常驻「下载 APP」入口，群聊私聊均可快捷下载',
     '修复旧版本无法自动检测更新：本机版本从安装包读取，不再误判为最新',
     '「查看版本与更新详情」随时可打开，展示本机与最新版本对比',
     '修复通知权限无法授权：补全权限声明并在启动时主动申请',
@@ -25,27 +28,27 @@ const APP_VERSION = {
   ],
   downloads: {
     android: {
-      url: BASE + 'xiliao-v1.02.apk',
+      url: BASE + 'xiliao-v1.03.apk',
       size: '3.2 MB',
-      filename: '细聊-1.02-Android.apk',
+      filename: '细聊-1.03-Android.apk',
       available: true
     },
     windows: {
-      url: BASE + 'xiliao-v1.02.exe',
+      url: BASE + 'xiliao-v1.03.exe',
       size: '100 MB',
-      filename: '细聊-1.02-Windows便携版.exe',
+      filename: '细聊-1.03-Windows便携版.exe',
       available: true
     },
     mac: {
       available: true,
-      x64: { url: BASE + 'xiliao-v1.02-mac-x64.zip', size: '115 MB', filename: '细聊-1.02-macOS-Intel.zip' },
-      arm64: { url: BASE + 'xiliao-v1.02-mac-arm64.zip', size: '111 MB', filename: '细聊-1.02-macOS-Apple芯片.zip' }
+      x64: { url: BASE + 'xiliao-v1.03-mac-x64.zip', size: '115 MB', filename: '细聊-1.03-macOS-Intel.zip' },
+      arm64: { url: BASE + 'xiliao-v1.03-mac-arm64.zip', size: '111 MB', filename: '细聊-1.03-macOS-Apple芯片.zip' }
     },
     linux: {
       available: true,
-      url: BASE + 'xiliao-v1.02-linux.AppImage',
+      url: BASE + 'xiliao-v1.03-linux.AppImage',
       size: '120 MB',
-      filename: '细聊-1.02-Linux.AppImage'
+      filename: '细聊-1.03-Linux.AppImage'
     },
     ios: {
       available: true,
