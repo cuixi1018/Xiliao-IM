@@ -1,5 +1,36 @@
 <script setup>
+import { onMounted, ref } from 'vue';
 import AppDownloadPrompt from './components/AppDownloadPrompt.vue';
+import { getPrefs } from './app-prefs.js';
+import { isClientApp } from './platform.js';
+
+// 应用锁：APP 启动时若已设置 PIN 且本次会话未解锁，则显示锁屏
+const LOCK_KEY = 'xiliao-unlocked-session';
+const locked = ref(false);
+const pinInput = ref('');
+const pinErr = ref('');
+
+onMounted(() => {
+  if (!isClientApp()) return;
+  const prefs = getPrefs();
+  const unlocked = sessionStorage.getItem(LOCK_KEY) === '1';
+  if (prefs.appLockEnabled && prefs.appLockPin && !unlocked) {
+    locked.value = true;
+  }
+});
+
+function unlock() {
+  const prefs = getPrefs();
+  if (pinInput.value === prefs.appLockPin) {
+    locked.value = false;
+    pinInput.value = '';
+    pinErr.value = '';
+    sessionStorage.setItem(LOCK_KEY, '1');
+  } else {
+    pinErr.value = 'PIN 不正确，请重试';
+    pinInput.value = '';
+  }
+}
 </script>
 
 <template>
@@ -9,6 +40,26 @@ import AppDownloadPrompt from './components/AppDownloadPrompt.vue';
     </Transition>
   </router-view>
   <AppDownloadPrompt />
+
+  <!-- 应用锁屏 -->
+  <div v-if="locked" class="applock-mask">
+    <div class="applock-box">
+      <img class="applock-logo" src="/logo.svg" alt="细聊" />
+      <h2>细聊已锁定</h2>
+      <p>请输入 4 位应用锁 PIN 继续</p>
+      <input
+        v-model="pinInput"
+        class="applock-input"
+        type="tel"
+        maxlength="4"
+        inputmode="numeric"
+        placeholder="••••"
+        @keyup.enter="unlock"
+      />
+      <p v-if="pinErr" class="applock-err">{{ pinErr }}</p>
+      <button type="button" class="applock-btn" @click="unlock">解锁</button>
+    </div>
+  </div>
 </template>
 
 <style>
@@ -28,4 +79,16 @@ import AppDownloadPrompt from './components/AppDownloadPrompt.vue';
   opacity: 0;
   transform: translateY(-6px);
 }
+
+/* 应用锁屏 */
+.applock-mask { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 24px; background: linear-gradient(160deg, #eef2f5, #dfe6e4); }
+.applock-box { width: min(320px, 100%); text-align: center; background: #fff; border-radius: 22px; padding: 38px 28px 30px; box-shadow: 0 20px 60px rgba(26,35,50,0.16); }
+.applock-logo { width: 60px; height: 60px; object-fit: contain; margin-bottom: 14px; }
+.applock-box h2 { margin: 0 0 6px; font-size: 19px; color: #191919; }
+.applock-box p { margin: 0 0 20px; font-size: 13px; color: #888; }
+.applock-input { width: 100%; box-sizing: border-box; text-align: center; letter-spacing: 12px; font-size: 22px; padding: 12px; border: 1px solid #ddd; border-radius: 10px; outline: none; }
+.applock-input:focus { border-color: #07c160; }
+.applock-err { color: #e64340 !important; font-size: 12px !important; margin: 8px 0 0 !important; }
+.applock-btn { width: 100%; margin-top: 18px; height: 44px; border: none; border-radius: 10px; background: #07c160; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+.applock-btn:hover { background: #06ad56; }
 </style>
