@@ -1,10 +1,11 @@
 ﻿<script setup>
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '../api.js';
 import store from '../store.js';
 import UiAvatar from '../components/ui/Avatar.vue';
 import QRCode from 'qrcode';
+import { getTheme, setTheme as applyTheme } from '../theme.js';
 
 const router = useRouter();
 const session = computed(() => store.session);
@@ -341,6 +342,138 @@ async function logout() {
   await store.logout();
   router.replace('/login');
 }
+
+// ===== 外观：主题模式 =====
+const themeMode = ref(getTheme());
+const themeOptions = [
+  { value: 'system', label: '跟随系统' },
+  { value: 'light', label: '浅色' },
+  { value: 'dark', label: '深色' }
+];
+function chooseTheme(mode) {
+  themeMode.value = mode;
+  applyTheme(mode);
+  info.value = mode === 'system' ? '已跟随系统主题' : `已切换为${mode === 'dark' ? '深色' : '浅色'}模式`;
+  clearMessage();
+}
+
+// ===== 检查更新 =====
+const appInfo = ref(null);
+const checkingUpdate = ref(false);
+async function checkUpdate(manual = true) {
+  if (checkingUpdate.value) return;
+  checkingUpdate.value = true;
+  try {
+    const data = await api.appVersion();
+    appInfo.value = data;
+    const localVersion = '1.0.0';
+    const hasNew = compareVersion(data.version, localVersion) > 0;
+    if (manual) {
+      info.value = hasNew ? `发现新版本 ${data.version}` : `当前已是最新版本 ${localVersion}`;
+      clearMessage();
+    }
+    return data;
+  } catch (e) {
+    if (manual) { error.value = '检查更新失败，请稍后重试'; clearMessage(); }
+    return null;
+  } finally {
+    checkingUpdate.value = false;
+  }
+}
+function compareVersion(a, b) {
+  const pa = String(a || '').split('.').map(Number);
+  const pb = String(b || '').split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d !== 0) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+// ===== 清除本机缓存（不动服务器数据）=====
+const clearingCache = ref(false);
+async function clearLocalCache() {
+  if (!window.confirm('清除本机缓存？不会删除服务器上的聊天记录，下次打开会重新加载。')) return;
+  clearingCache.value = true;
+  try {
+    // 清理浏览器/Cache API 缓存
+    if (window.caches?.keys) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+    // 清理关键本地存储（保留登录 token 与主题）
+    const keep = ['xiliao-theme', 'customBackground'];
+    const tokenKeys = ['token', 'xiliao-token', 'auth_token', 'xiliao_session'];
+    const toRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (keep.includes(k) || tokenKeys.some((tk) => k.toLowerCase().includes(tk.toLowerCase()))) continue;
+      toRemove.push(k);
+    }
+    toRemove.forEach((k) => localStorage.removeItem(k));
+    // 请求 Capacitor 清除 WebView 缓存（如可用）
+    try {
+      const cap = window.Capacitor;
+      if (cap?.isNativePlatform?.()) {
+        await import('@capacitor/core').then(({ Capacitor }) => Capacitor.Plugins?.Cache?.clear?.());
+      }
+    } catch { /* 插件不可用时忽略 */ }
+    info.value = '本机缓存已清除';
+  } catch (e) {
+    error.value = '清除缓存失败';
+  } finally {
+    clearingCache.value = false;
+    clearMessage();
+  }
+}
+
+// ===== 清除本机聊天记录（仅本机显示缓存，不动服务器）=====
+const clearingChat = ref(false);
+function clearLocalChatRecords() {
+  if (!window.confirm('清除本机聊天记录缓存？服务器记录不会删除，重新加载后仍可看到历史消息。')) return;
+  clearingChat.value = true;
+  try {
+    // 清掉与消息/会话列表相关的本地缓存键
+    const patterns = ['message', 'messages', 'chat', 'conversation', 'draft', 'unread'];
+    const toRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      const low = k.toLowerCase();
+      if (patterns.some((p) => low.includes(p)) && !low.includes('token') && !low.includes('theme')) {
+        toRemove.push(k);
+      }
+    }
+    toRemove.forEach((k) => localStorage.removeItem(k));
+    info.value = `已清除 ${toRemove.length} 项本机聊天缓存`;
+  } catch (e) {
+    error.value = '清除失败';
+  } finally {
+    clearingChat.value = false;
+    clearMessage();
+    setTimeout(() => window.location.reload(), 800);
+  }
+}
+
+// ===== 下载 APP（按设备自动匹配）=====
+function detectPlatform() {
+  const ua = navigator.userAgent || '';
+  if (/android/i.test(ua)) return 'android';
+  if (/windows/i.test(ua)) return 'windows';
+  return 'other';
+}
+const downloadPlatform = ref(detectPlatform());
+function getDownloadUrl(platform) {
+  const d = appInfo.value?.downloads;
+  if (!d) return platform === 'windows' ? 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.0.exe' : 'https://xl.cuixi.qzz.io/files/releases/xiliao-v1.0.apk';
+  return platform === 'windows' ? d.windows?.url : d.android?.url;
+}
+function openAppDownload() {
+  const url = getDownloadUrl(downloadPlatform.value === 'other' ? 'android' : downloadPlatform.value);
+  if (url) window.open(url, '_blank');
+}
+
+// 进入设置页时静默检查一次更新
+onMounted(() => { checkUpdate(false); });
 </script>
 
 <template>
@@ -429,6 +562,49 @@ async function logout() {
           </label>
           <button type="button" class="save-btn" :disabled="savingProfile" @click="saveProfile">
             {{ savingProfile ? '保存中' : '保存资料' }}
+          </button>
+        </section>
+
+        <section class="settings-section">
+          <h2>通用设置</h2>
+          <!-- 外观主题 -->
+          <label class="field-compact">
+            <span>外观模式</span>
+            <select v-model="themeMode" class="field-select" @change="chooseTheme(themeMode)">
+              <option v-for="opt in themeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+          </label>
+          <!-- 检查更新 -->
+          <button type="button" class="setting-row" :disabled="checkingUpdate" @click="checkUpdate(true)">
+            <span class="setting-row__icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/><path d="M12 7v5l3 2"/></svg>
+            </span>
+            <span class="setting-row__label">检查更新</span>
+            <span class="setting-row__value">{{ checkingUpdate ? '检查中…' : (appInfo ? 'v' + appInfo.version : 'v1.0.0') }}</span>
+          </button>
+          <!-- 下载 APP -->
+          <button type="button" class="setting-row" @click="openAppDownload">
+            <span class="setting-row__icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 10 12 15 17 10"/><path d="M5 21h14"/></svg>
+            </span>
+            <span class="setting-row__label">下载 APP</span>
+            <span class="setting-row__value">{{ downloadPlatform === 'windows' ? 'Windows' : downloadPlatform === 'android' ? 'Android' : '选择版本' }}</span>
+          </button>
+          <!-- 清除缓存 -->
+          <button type="button" class="setting-row" :disabled="clearingCache" @click="clearLocalCache">
+            <span class="setting-row__icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+            </span>
+            <span class="setting-row__label">清除本机缓存</span>
+            <span class="setting-row__value">{{ clearingCache ? '清理中…' : '' }}</span>
+          </button>
+          <!-- 清除本机聊天记录 -->
+          <button type="button" class="setting-row" :disabled="clearingChat" @click="clearLocalChatRecords">
+            <span class="setting-row__icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="9" y1="10" x2="15" y2="10"/></svg>
+            </span>
+            <span class="setting-row__label">清除本机聊天记录</span>
+            <span class="setting-row__value">{{ clearingChat ? '清理中…' : '' }}</span>
           </button>
         </section>
 
@@ -582,6 +758,36 @@ async function logout() {
 </template>
 
 <style scoped>
+/* 通用设置行：图标 + 标题 + 右侧值 */
+.setting-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  margin-top: 10px;
+  border: 1px solid rgba(91, 141, 191, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  color: #191919;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+.setting-row:hover { background: rgba(7, 193, 96, 0.08); }
+.setting-row:active { transform: scale(0.99); }
+.setting-row:disabled { opacity: 0.6; cursor: default; }
+.setting-row__icon {
+  width: 34px; height: 34px;
+  flex: 0 0 34px;
+  border-radius: 9px;
+  background: rgba(7, 193, 96, 0.12);
+  color: #07c160;
+  display: flex; align-items: center; justify-content: center;
+}
+.setting-row__label { flex: 1; font-size: 14px; font-weight: 500; }
+.setting-row__value { font-size: 12.5px; color: #888; }
+
 .settings-page {
   height: 100vh;
   height: 100dvh;
