@@ -6,8 +6,9 @@ import { useRoute } from 'vue-router';
 import { isWebOnly } from '../platform.js';
 
 const route = useRoute();
-// 下载详情页本身不再弹下载提示
-const isDownloadPage = () => route.path === '/download';
+// 下载详情页本身不再弹下载提示（用 location.pathname 避免路由初始导航时序问题）
+const isDownloadPage = () =>
+  (typeof window !== 'undefined' && window.location.pathname === '/download') || route.path === '/download';
 
 const APP_DOWNLOAD_PAGE = import.meta.env.VITE_APP_DOWNLOAD_URL || '/download';
 const APP_VERSION = '1.01';
@@ -32,8 +33,10 @@ function dismiss() { visible.value = false; }
 
 onMounted(() => {
   if (isWebOnly() && !isDownloadPage()) {
-    // 轻微延迟，避免遮挡首屏渲染
-    setTimeout(() => { visible.value = true; }, 600);
+    // 轻微延迟，避免遮挡首屏渲染；触发时二次确认当前不在下载页
+    setTimeout(() => {
+      if (!isDownloadPage()) visible.value = true;
+    }, 600);
   }
 });
 
@@ -57,7 +60,7 @@ watch(() => route.path, (path) => {
         <p class="appdlg-desc">体验更流畅的消息通知与完整功能<br/>已为你匹配 <strong>{{ platformLabel }}</strong></p>
         <div class="appdlg-version">v{{ APP_VERSION }} · 点击查看版本详情</div>
         <div class="appdlg-actions">
-          <button type="button" class="appdlg-primary" @click="download">查看详情并下载</button>
+          <button type="button" class="appdlg-primary" @click="download">查看详情</button>
           <button type="button" class="appdlg-secondary" @click="dismiss">以后再说</button>
         </div>
       </div>
